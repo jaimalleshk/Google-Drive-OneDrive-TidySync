@@ -48,11 +48,11 @@ def fake_ensure():
     return "rclone"
 
 
-def fake_lsjson(path, max_age, filters):
+def fake_lsjson(path, max_age, filters, **kwargs):
     return FAKE_LSJSON.get(path, [])
 
 
-def fake_copy(src, dst, max_age, filters, dry_run=False, extra=None):
+def fake_copy(src, dst, max_age, filters, dry_run=False, extra=None, **kwargs):
     res = rclone.CopyResult(src=src, dst=dst)
     # Simulate rclone: new files get copied; edited_both copied only where source is newer
     # (--update). identical.txt is skipped (not transferred).

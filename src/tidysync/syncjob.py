@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -14,6 +15,11 @@ from tidysync.state import StateStore, utcnow_iso
 
 class SyncError(Exception):
     pass
+
+
+def _trail(msg: str, on: bool) -> None:
+    if on:
+        print(msg, file=sys.stderr, flush=True)
 
 
 @dataclass
@@ -92,7 +98,8 @@ def resolve_window(pair: PairConfig, store: StateStore,
 
 def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
              since_override: Optional[str] = None,
-             dry_run_override: Optional[bool] = None) -> RunResult:
+             dry_run_override: Optional[bool] = None,
+             progress: bool = False) -> RunResult:
     rclone.ensure_rclone()
     dry_run = pair.dry_run if dry_run_override is None else dry_run_override
     since_spec, window = resolve_window(pair, store, since_override)
@@ -109,6 +116,10 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
     # Never sync the dedupe quarantine folder between clouds.
     eff_filters = [f"- {QUARANTINE_DIR}/**"] + pair.filters
 
+    tag = "[DRY RUN] " if dry_run else ""
+    _trail(f"\n{tag}Sync '{pair.name}'  ({pair.mode}, {pair.scope}, since {window})",
+           progress)
+
     # Pre-step: on any Google Drive source, export native Google docs to Office
     # files (.docx/.xlsx/.pptx) in place, so the sync copies usable files. The new
     # files land with a fresh modtime and are picked up by the delta window below.
@@ -121,7 +132,9 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
             except Exception as exc:  # detection failure shouldn't abort the sync
                 result.errors.append(f"google-doc detection skipped: {exc}")
                 continue
-            cres = gdocs.run_convert(src_remote, conv_folders, eff_filters, dry_run=dry_run)
+            _trail(f"  Converting Google docs on {src_remote} ...", progress)
+            cres = gdocs.run_convert(src_remote, conv_folders, eff_filters,
+                                     dry_run=dry_run, progress=progress, refresh=True)
             result.converted.extend(cres.converted)
             result.conversion_uptodate += len(cres.skipped_uptodate)
             result.errors.extend(cres.errors)
@@ -135,17 +148,26 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
             src = _rpath(src_remote, folder)
             dst = _rpath(dst_remote, folder)
 
+            _trail(f"\n[{label}] Scanning {src} for changes since {window} "
+                   "(whole-drive can take a few minutes)...", progress)
             try:
-                candidates = rclone.lsjson(src, window, eff_filters)
+                candidates = rclone.lsjson(
+                    src, window, eff_filters,
+                    spinner_label=(f"scanning {src}" if progress else None))
             except rclone.RcloneError as exc:
                 result.errors.append(str(exc))
+                _trail(f"  ! scan failed: {exc}", progress)
                 continue
+
+            _trail(f"  {len(candidates)} changed/new file(s); "
+                   f"copying {src} -> {dst} ...", progress)
 
             seen.setdefault(folder, {"L": set(), "R": set()})
             for c in candidates:
                 seen[folder][side].add(c["Path"])
 
-            copy_res = rclone.copy(src, dst, window, eff_filters, dry_run=dry_run)
+            copy_res = rclone.copy(src, dst, window, eff_filters,
+                                   dry_run=dry_run, progress=progress)
             result.errors.extend(copy_res.errors)
             created = set(copy_res.created)
             updated = set(copy_res.updated)

@@ -34,7 +34,7 @@ def fake_ensure():
     return "rclone"
 
 
-def fake_lsjson(path, max_age=None, filters=None, with_hash=False):
+def fake_lsjson(path, max_age=None, filters=None, with_hash=False, **kwargs):
     return LISTING.get(path, [])
 
 

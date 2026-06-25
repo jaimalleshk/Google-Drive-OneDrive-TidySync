@@ -119,10 +119,11 @@ def cmd_check(args) -> int:
 
 
 def _do_run(cfg: AppConfig, pair_name: str, since: Optional[str],
-            dry_run: Optional[bool]) -> int:
+            dry_run: Optional[bool], progress: bool = False) -> int:
     store = _store(cfg)
     pair = cfg.pair(pair_name)
-    result = run_pair(cfg, pair, store, since_override=since, dry_run_override=dry_run)
+    result = run_pair(cfg, pair, store, since_override=since,
+                      dry_run_override=dry_run, progress=progress)
     html_path, _, _ = write_reports(result, cfg.reports_dir)
     # Persist last-sync only on a real, successful run.
     if not result.dry_run and not result.errors:
@@ -136,6 +137,13 @@ def _do_run(cfg: AppConfig, pair_name: str, since: Optional[str],
     return 1 if result.errors else 0
 
 
+def _progress_on(args) -> bool:
+    """Show live progress when at a terminal and not silenced."""
+    if getattr(args, "quiet", False):
+        return False
+    return interactive.is_tty()
+
+
 def cmd_run(args) -> int:
     # Human at a terminal: show the config, confirm, fill anything missing.
     if interactive.enabled(args):
@@ -143,7 +151,7 @@ def cmd_run(args) -> int:
             print("Aborted — config not confirmed.")
             return 1
     cfg = _load(args)
-    return _do_run(cfg, args.pair, args.since, _dry(args))
+    return _do_run(cfg, args.pair, args.since, _dry(args), progress=_progress_on(args))
 
 
 def cmd_menu(args) -> int:
@@ -160,7 +168,7 @@ def cmd_run_all(args) -> int:
     rc = 0
     for name in cfg.pairs:
         try:
-            rc |= _do_run(cfg, name, args.since, _dry(args))
+            rc |= _do_run(cfg, name, args.since, _dry(args), progress=_progress_on(args))
         except SyncError as exc:
             print(f"{name}: skipped — {exc}")
             rc = 1
@@ -211,10 +219,11 @@ def cmd_dedupe(args) -> int:
               file=sys.stderr)
         return 2
     remote = cfg.remotes[args.remote]
+    prog = _progress_on(args)
     result = dedupe.find_duplicates(
-        remote, folders=args.folder, quarantine=args.quarantine)
+        remote, folders=args.folder, quarantine=args.quarantine, progress=prog)
     if args.apply and result.groups:
-        dedupe.apply_quarantine(result, dry_run=False)
+        dedupe.apply_quarantine(result, dry_run=False, progress=prog)
 
     html_path, _, _ = write_dedupe_report(result, cfg.reports_dir)
     t = result.totals
@@ -247,10 +256,13 @@ def cmd_convert(args) -> int:
         print(f"error: '{args.remote}' is type '{rtype or 'unknown'}'. "
               "Google-doc conversion applies only to Google Drive remotes.", file=sys.stderr)
         return 2
-    res = gdocs.run_convert(remote, folders=args.folder, dry_run=not args.apply)
+    res = gdocs.run_convert(remote, folders=args.folder, dry_run=not args.apply,
+                            progress=_progress_on(args),
+                            refresh=getattr(args, "refresh", False))
     t = res.totals
     mode = "CONVERTED" if res.apply else "REPORT-ONLY"
-    print(f"\n{mode} {args.remote}: converted={t['converted']} uptodate={t['uptodate']} "
+    print(f"\n{mode} {args.remote}: converted={t['converted']} "
+          f"already_exist={t['uptodate']} "
           f"unsupported={t['unsupported']} errors={t['errors']}")
     for c in res.converted[:30]:
         print(f"    {c['path']} -> {c['out']}")
@@ -296,11 +308,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("pair")
     sp.add_argument("--since", help="Override delta start: date '2026-06-01' or duration '720h'.")
     sp.add_argument("--dry-run", action="store_true", help="Report only; transfer nothing.")
+    sp.add_argument("--quiet", action="store_true", help="No live progress bar / trail.")
     sp.set_defaults(func=cmd_run)
 
     sp = sub.add_parser("run-all", help="Run every configured pair.")
     sp.add_argument("--since", help="Override delta start for all pairs.")
     sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument("--quiet", action="store_true", help="No live progress bar / trail.")
     sp.set_defaults(func=cmd_run_all)
 
     sp = sub.add_parser("status", help="Show last-sync time and latest report per pair.")
@@ -326,6 +340,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Limit to this folder (repeatable). Default: the whole remote.")
     sp.add_argument("--apply", action="store_true",
                     help="Create the Office files on Drive (default: report only).")
+    sp.add_argument("--refresh", action="store_true",
+                    help="Also re-convert docs changed since their existing Office copy.")
     sp.set_defaults(func=cmd_convert)
 
     sp = sub.add_parser("schedule", help="Create a Windows scheduled task for a pair.")

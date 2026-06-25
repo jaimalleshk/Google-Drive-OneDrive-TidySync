@@ -96,7 +96,8 @@ def _pick_canonical(files: List[dict]) -> Tuple[dict, List[dict]]:
 
 def find_duplicates(remote: str, folders: Optional[List[str]] = None,
                     filters: Optional[List[str]] = None,
-                    quarantine: str = QUARANTINE_DIR) -> DedupeResult:
+                    quarantine: str = QUARANTINE_DIR,
+                    progress: bool = False) -> DedupeResult:
     rclone.ensure_rclone()
     start = time.time()
     result = DedupeResult(
@@ -108,7 +109,9 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
     by_hash: Dict[Tuple[str, str], List[dict]] = {}
     for scan_path, prefix in _scan_paths(remote, folders):
         try:
-            items = rclone.lsjson(scan_path, filters=filters, with_hash=True)
+            items = rclone.lsjson(
+                scan_path, filters=filters, with_hash=True,
+                spinner_label=(f"hashing {scan_path}" if progress else None))
         except rclone.RcloneError as exc:
             result.errors.append(str(exc))
             continue
@@ -137,15 +140,21 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
     return result
 
 
-def apply_quarantine(result: DedupeResult, dry_run: bool = False) -> None:
+def apply_quarantine(result: DedupeResult, dry_run: bool = False,
+                     progress: bool = False) -> None:
     """Move every quarantined file to <remote>:<quarantine>/<original path>."""
+    from tidysync.progress import Counter
     result.apply = not dry_run
+    total = sum(len(g.quarantined) for g in result.groups)
+    counter = Counter(total, "quarantining", on=progress)
     for group in result.groups:
         for f in group.quarantined:
             full = f["_full"]
+            counter.step(full)
             src = _join(result.remote, full)
             dst = _join(result.remote, f"{result.quarantine}/{full}")
             ok, err = rclone.moveto(src, dst, dry_run=dry_run)
             f["_moved"] = ok and not dry_run
             if not ok:
                 result.errors.append(f"{full}: {err}")
+    counter.close()

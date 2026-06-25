@@ -126,13 +126,22 @@ def _missing_fields(pr: dict, remotes: dict) -> List[str]:
     return missing
 
 
+def flow_arrow(mode: str, lkey: str, rkey: str) -> str:
+    """Human-readable sync direction for a pair."""
+    if mode == "left-to-right":
+        return f"{lkey} --> {rkey}"
+    if mode == "right-to-left":
+        return f"{rkey} --> {lkey}"
+    return f"{lkey} <-> {rkey}"   # two-way
+
+
 def _print_pair(pr: dict, remotes: dict) -> None:
     lkey, rkey = pr.get("left"), pr.get("right")
+    mode = pr.get("mode")
     print("\n  ---------------------------------------------")
     print(f"  pair    : {pr.get('name')}")
-    print(f"  source  : {lkey} -> {remotes.get(lkey, '?')}")
-    print(f"  target  : {rkey} -> {remotes.get(rkey, '?')}")
-    print(f"  mode    : {pr.get('mode')}")
+    print(f"  sync    : {flow_arrow(mode, lkey, rkey)}   ({mode})")
+    print(f"  clouds  : {lkey}={remotes.get(lkey, '?')}  {rkey}={remotes.get(rkey, '?')}")
     print(f"  scope   : {pr.get('scope')}")
     if pr.get("scope") == "folders":
         print(f"  folders : {', '.join(pr.get('folders') or []) or '(none)'}")
@@ -144,7 +153,7 @@ def _edit_pair(pr: dict, remotes: dict, available: List[str]) -> None:
     for side in ("left", "right"):
         cur_key = pr.get(side)
         cur_remote = remotes.get(cur_key) if cur_key else None
-        label = "Source cloud remote" if side == "left" else "Target cloud remote"
+        label = "First cloud (left)" if side == "left" else "Second cloud (right)"
         remote = ask_remote(label, available, default=cur_remote)
         if not remote:
             continue
@@ -245,17 +254,53 @@ def configure_pair(config_path: Path) -> None:
 # --- main menu -----------------------------------------------------------
 
 MENU = """
-======== TidySync : Google Drive <-> OneDrive ========
-  1) Run a sync pair
-  2) Run all pairs
-  3) Find duplicates in a cloud (dedupe)
-  4) Convert Google docs to Office (Drive)
-  5) Configure / edit a sync pair
-  6) Schedule a pair    7) Unschedule a pair
-  8) Status             9) Check remotes
- 10) Create/repair config (init)
-  0) Quit
-======================================================
+================ TidySync : Google Drive <-> OneDrive ================
+  SYNC
+    1) Run a sync pair        copy recent changes between two clouds
+    2) Run all pairs          run every configured pair
+  MAINTAIN  (one cloud at a time)
+    3) Find duplicates        by content; move extras to a review folder
+    4) Convert Google docs    make .docx/.xlsx/.pptx copies on Google Drive
+  SETUP
+    5) Configure a pair       clouds, direction, folders, time window
+    6) Schedule a pair        7) Unschedule a pair
+    8) Status                 9) Check remotes
+   10) Create / repair config
+  ---------------------------------------------------------------------
+    h) Help (what each option does)                 0) Quit
+=====================================================================
+"""
+
+HELP = """
+TidySync keeps Google Drive and OneDrive in sync and tidy.
+
+ 1) Run a sync pair       Copy files changed within your time window between the
+                          two clouds (one-way or two-way). Never deletes; the
+                          most-recently-modified copy wins. A dry-run option lets
+                          you preview first.
+ 2) Run all pairs         Do option 1 for every pair in your config.
+
+ 3) Find duplicates       Within ONE cloud, find files with identical CONTENT
+                          (any name, any folder), keep the newest, and move the
+                          rest to a _duplicates/ folder for you to review/delete.
+                          Nothing is ever deleted automatically.
+ 4) Convert Google docs   On Google Drive, export native Google Docs/Sheets/Slides
+                          to real .docx/.xlsx/.pptx files in the SAME folder,
+                          recursively. By default it only creates copies that don't
+                          already exist (optionally refresh ones whose doc changed).
+                          Native Google files can't sync to OneDrive usefully alone.
+
+ 5) Configure a pair      Add or edit a pair: the two clouds, direction
+                          (one-way / two-way), scope (whole drive or folders),
+                          and the delta time window.
+ 6/7) Schedule / Unschedule  Run a pair automatically (every N minutes or daily),
+                          or remove that schedule.
+ 8) Status                Last-sync time and latest report for each pair.
+ 9) Check remotes         Verify both clouds are reachable.
+10) Create / repair config  Write a fresh config template.
+
+Safety: dry-run previews everywhere, sync never deletes, dedupe/convert never
+auto-delete. Reports (HTML/CSV/JSON) are written to the reports/ folder.
 """
 
 
@@ -297,7 +342,7 @@ def menu(config_path: Path) -> int:
                     continue
                 dry = ask_yes_no("Dry run (report only, no transfer)?", default=False)
                 cli._do_run(load_config(config_path), name, since=None,
-                            dry_run=True if dry else None)
+                            dry_run=True if dry else None, progress=True)
             elif choice == "2":
                 dry = ask_yes_no("Dry run for all pairs?", default=False)
                 cli.cmd_run_all(_ns(config_path, since=None, dry_run=dry))
@@ -310,12 +355,20 @@ def menu(config_path: Path) -> int:
                 cli.cmd_dedupe(_ns(config_path, remote=key, folder=None,
                                    apply=apply, quarantine=dedupe.QUARANTINE_DIR))
             elif choice == "4":
+                print("  Export native Google docs (Docs/Sheets/Slides) to Office files on")
+                print("  Google Drive, recursively, in the same folder. Only creates copies")
+                print("  that don't already exist.")
                 key = _pick_remote_key(config_path)
                 if not key:
                     continue
-                apply = ask_yes_no("Create the Office files on Drive now? "
-                                   "(No = report only)", default=False)
-                cli.cmd_convert(_ns(config_path, remote=key, folder=None, apply=apply))
+                folder = ask("  Limit to a folder? (blank = whole drive)", default="")
+                folders = [folder.strip().strip("/")] if folder.strip() else None
+                refresh = ask_yes_no("  Also re-convert docs changed since their Office copy?",
+                                     default=False)
+                apply = ask_yes_no("  Create the Office files now? (No = report only)",
+                                   default=False)
+                cli.cmd_convert(_ns(config_path, remote=key, folder=folders,
+                                    apply=apply, refresh=refresh))
             elif choice == "5":
                 configure_pair(config_path)
             elif choice == "6":
@@ -340,6 +393,8 @@ def menu(config_path: Path) -> int:
                 cli.cmd_check(_ns(config_path))
             elif choice == "10":
                 cli.cmd_init(_ns(config_path, force=False))
+            elif choice in ("h", "H", "help", "?"):
+                print(HELP)
             elif choice in ("0", "q", "quit", "exit"):
                 print("bye.")
                 return 0

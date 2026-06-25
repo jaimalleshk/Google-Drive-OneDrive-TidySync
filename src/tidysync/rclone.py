@@ -3,14 +3,50 @@
 from __future__ import annotations
 
 import glob
+import itertools
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
+
+
+def _run_capture(cmd: List[str], spinner_label: Optional[str] = None) -> Tuple[int, str, str]:
+    """Run a command, capturing stdout/stderr as UTF-8.
+
+    If spinner_label is given, show a live spinner with elapsed seconds on stderr
+    while the command runs (output goes to temp files to avoid pipe deadlocks on
+    large listings).
+    """
+    if not spinner_label:
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace")
+        return out.returncode, out.stdout or "", out.stderr or ""
+
+    with tempfile.TemporaryFile() as ofh, tempfile.TemporaryFile() as efh:
+        proc = subprocess.Popen(cmd, stdout=ofh, stderr=efh)
+        frames = itertools.cycle("|/-\\")
+        start = time.time()
+        try:
+            while proc.poll() is None:
+                sys.stderr.write(f"\r  {next(frames)} {spinner_label} "
+                                 f"({int(time.time() - start)}s) ")
+                sys.stderr.flush()
+                time.sleep(0.15)
+        finally:
+            proc.wait()
+            sys.stderr.write("\r" + " " * 78 + "\r")
+            sys.stderr.flush()
+        ofh.seek(0)
+        efh.seek(0)
+        out = ofh.read().decode("utf-8", "replace")
+        err = efh.read().decode("utf-8", "replace")
+    return proc.returncode, out, err
 
 
 class RcloneError(Exception):
@@ -92,12 +128,13 @@ def _filter_args(filters: List[str]) -> List[str]:
 
 
 def lsjson(path: str, max_age: Optional[str] = None,
-           filters: Optional[List[str]] = None, with_hash: bool = False) -> List[dict]:
+           filters: Optional[List[str]] = None, with_hash: bool = False,
+           spinner_label: Optional[str] = None) -> List[dict]:
     """List files under `path` (recursively, files only).
 
     With `max_age` set, only files newer than it are returned. With `with_hash`,
     each item includes a "Hashes" mapping. Item keys: Path, Size, ModTime, IsDir
-    (+ Hashes when requested).
+    (+ Hashes when requested). `spinner_label` shows a live spinner while listing.
     """
     exe = ensure_rclone()
     cmd = [exe, "lsjson", "-R", "--files-only"]
@@ -107,13 +144,11 @@ def lsjson(path: str, max_age: Optional[str] = None,
         cmd += ["--hash"]
     cmd.append(path)
     cmd += _filter_args(filters or [])
-    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if out.returncode != 0:
-        raise RcloneError(
-            f"rclone lsjson failed for {path}:\n{out.stderr.strip()}"
-        )
+    rc, out, err = _run_capture(cmd, spinner_label=spinner_label)
+    if rc != 0:
+        raise RcloneError(f"rclone lsjson failed for {path}:\n{err.strip()}")
     try:
-        return json.loads(out.stdout or "[]")
+        return json.loads(out or "[]")
     except json.JSONDecodeError as exc:
         raise RcloneError(f"Could not parse lsjson output for {path}: {exc}")
 
@@ -191,9 +226,13 @@ def copy(
     filters: List[str],
     dry_run: bool = False,
     extra: Optional[List[str]] = None,
+    progress: bool = False,
 ) -> CopyResult:
     """Delta copy src -> dst: only files newer than max_age, never overwriting a
-    newer destination (--update). Identical files are skipped by rclone."""
+    newer destination (--update). Identical files are skipped by rclone.
+
+    With `progress=True`, rclone's live progress bar (current file, %, speed, ETA)
+    is shown on the terminal; the detailed log is still captured for the report."""
     exe = ensure_rclone()
     result = CopyResult(src=src, dst=dst)
 
@@ -213,11 +252,19 @@ def copy(
     ]
     if dry_run:
         cmd.append("--dry-run")
+    if progress:
+        cmd.append("--progress")
     cmd += _filter_args(filters)
     if extra:
         cmd += extra
 
-    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if progress:
+        # Inherit the terminal so rclone draws its live progress bar; the log
+        # file still captures everything we parse below.
+        proc = subprocess.run(cmd)
+    else:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
     result.returncode = proc.returncode
 
     for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():

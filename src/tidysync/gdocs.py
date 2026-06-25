@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from tidysync import rclone
+from tidysync.progress import Counter
 from tidysync.state import utcnow_iso
 
 # Google native MIME type -> Office export extension.
@@ -77,7 +78,13 @@ def out_name(full_path: str, ext: str) -> str:
 
 def run_convert(remote: str, folders: Optional[List[str]] = None,
                 filters: Optional[List[str]] = None,
-                dry_run: bool = False) -> ConvertResult:
+                dry_run: bool = False, progress: bool = False,
+                refresh: bool = False) -> ConvertResult:
+    """Export native Google docs to Office files on Drive, recursively, in place.
+
+    By default only creates a copy where one does NOT already exist. With
+    refresh=True, also re-converts a doc whose Office copy is older than the doc.
+    """
     rclone.ensure_rclone()
     start = time.time()
     result = ConvertResult(
@@ -90,7 +97,10 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
     items: List[dict] = []
     for scan_path, prefix in _scan_paths(remote, folders):
         try:
-            for it in rclone.lsjson(scan_path, filters=filters):
+            listing = rclone.lsjson(
+                scan_path, filters=filters,
+                spinner_label=(f"scanning {scan_path} for Google docs" if progress else None))
+            for it in listing:
                 it["_full"] = (prefix + "/" + it["Path"]) if prefix else it["Path"]
                 items.append(it)
         except rclone.RcloneError as exc:
@@ -111,9 +121,11 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
             result.skipped_unsupported.append(it["_full"])
             continue
         out = out_name(it["_full"], ext)
-        if out in existing and existing[out] >= it.get("ModTime", ""):
-            result.skipped_uptodate.append(it["_full"])
-            continue
+        if out in existing:
+            # Office copy already exists. Skip unless refresh + the doc is newer.
+            if not refresh or existing[out] >= it.get("ModTime", ""):
+                result.skipped_uptodate.append(it["_full"])
+                continue
         todo.append((it, out, ext))
 
     if dry_run:
@@ -126,8 +138,10 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
 
     # 4. Export each doc to a temp file, then upload the Office file back to Drive.
     tmp = tempfile.mkdtemp(prefix="tidysync_gdocs_")
+    counter = Counter(len(todo), "converting", on=progress)
     try:
         for it, out, ext in todo:
+            counter.step(it["_full"])
             src = _join(remote, it["_full"])
             local = os.path.join(tmp, out.replace("/", "__"))
             ok, err = rclone.copyto(src, local, extra=["--drive-export-formats", ext])
@@ -140,6 +154,7 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
                 continue
             result.converted.append({"path": it["_full"], "out": out, "ext": ext,
                                      "applied": True})
+        counter.close()
     finally:
         for root, _dirs, files in os.walk(tmp, topdown=False):
             for f in files:
