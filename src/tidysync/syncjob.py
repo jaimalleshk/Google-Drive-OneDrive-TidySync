@@ -132,7 +132,8 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
             except Exception as exc:  # detection failure shouldn't abort the sync
                 result.errors.append(f"google-doc detection skipped: {exc}")
                 continue
-            _trail(f"  Converting Google docs on {src_remote} ...", progress)
+            _trail(f"  {'Would convert' if dry_run else 'Converting'} "
+                   f"Google docs on {src_remote} ...", progress)
             cres = gdocs.run_convert(src_remote, conv_folders, eff_filters,
                                      dry_run=dry_run, progress=progress, refresh=True)
             result.converted.extend(cres.converted)
@@ -148,8 +149,8 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
             src = _rpath(src_remote, folder)
             dst = _rpath(dst_remote, folder)
 
-            _trail(f"\n[{label}] Scanning {src} for changes since {window} "
-                   "(whole-drive can take a few minutes)...", progress)
+            slow = " (this can take a few minutes)" if pair.scope == "whole-drive" else ""
+            _trail(f"\n[{label}] Scanning {src} for changes since {window}{slow} ...", progress)
             try:
                 candidates = rclone.lsjson(
                     src, window, eff_filters,
@@ -159,8 +160,9 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
                 _trail(f"  ! scan failed: {exc}", progress)
                 continue
 
-            _trail(f"  {len(candidates)} changed/new file(s); "
-                   f"copying {src} -> {dst} ...", progress)
+            verb = "would copy" if dry_run else "copying"
+            _trail(f"  {len(candidates)} changed/new file(s); {verb} {src} -> {dst} ...",
+                   progress)
 
             seen.setdefault(folder, {"L": set(), "R": set()})
             for c in candidates:
@@ -168,6 +170,9 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
 
             copy_res = rclone.copy(src, dst, window, eff_filters,
                                    dry_run=dry_run, progress=progress)
+            if dry_run:
+                _trail("  (dry run: the figures above are SIMULATED - nothing was transferred)",
+                       progress)
             result.errors.extend(copy_res.errors)
             created = set(copy_res.created)
             updated = set(copy_res.updated)
