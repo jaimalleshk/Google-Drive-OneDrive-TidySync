@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import glob
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -16,7 +18,32 @@ class RcloneError(Exception):
 
 
 def find_rclone() -> Optional[str]:
-    return shutil.which("rclone")
+    """Locate the rclone binary.
+
+    Order: TIDYSYNC_RCLONE override -> PATH -> common install locations
+    (winget often isn't on the PATH of a shell opened before install).
+    """
+    override = os.environ.get("TIDYSYNC_RCLONE")
+    if override and Path(override).exists():
+        return override
+
+    found = shutil.which("rclone")
+    if found:
+        return found
+
+    home = Path.home()
+    patterns = [
+        str(home / "AppData/Local/Microsoft/WinGet/Packages/Rclone.Rclone*/**/rclone.exe"),
+        str(home / "AppData/Local/Microsoft/WinGet/Links/rclone.exe"),
+        r"C:\Program Files\rclone\rclone.exe",
+        r"C:\ProgramData\chocolatey\bin\rclone.exe",
+        "/usr/bin/rclone", "/usr/local/bin/rclone", "/opt/homebrew/bin/rclone",
+    ]
+    for pat in patterns:
+        hits = sorted(glob.glob(pat, recursive=True))
+        if hits:
+            return hits[-1]
+    return None
 
 
 def ensure_rclone() -> str:
@@ -25,20 +52,20 @@ def ensure_rclone() -> str:
         raise RcloneError(
             "rclone is not installed or not on PATH.\n"
             "Install it with:  winget install Rclone.Rclone\n"
-            "or download from https://rclone.org/downloads/ , then re-run."
+            "or set TIDYSYNC_RCLONE to the full path of rclone.exe, then re-run."
         )
     return exe
 
 
 def version() -> str:
     exe = ensure_rclone()
-    out = subprocess.run([exe, "version"], capture_output=True, text=True)
+    out = subprocess.run([exe, "version"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return (out.stdout or "").strip().splitlines()[0] if out.stdout else ""
 
 
 def list_remotes() -> List[str]:
     exe = ensure_rclone()
-    out = subprocess.run([exe, "listremotes"], capture_output=True, text=True)
+    out = subprocess.run([exe, "listremotes"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         raise RcloneError(out.stderr.strip() or "rclone listremotes failed")
     return [line.strip() for line in out.stdout.splitlines() if line.strip()]
@@ -49,7 +76,7 @@ def check_remote(remote: str) -> None:
     exe = ensure_rclone()
     out = subprocess.run(
         [exe, "lsd", remote, "--max-depth", "1"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if out.returncode != 0:
         raise RcloneError(
@@ -80,7 +107,7 @@ def lsjson(path: str, max_age: Optional[str] = None,
         cmd += ["--hash"]
     cmd.append(path)
     cmd += _filter_args(filters or [])
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         raise RcloneError(
             f"rclone lsjson failed for {path}:\n{out.stderr.strip()}"
@@ -97,7 +124,7 @@ def moveto(src: str, dst: str, dry_run: bool = False) -> Tuple[bool, str]:
     cmd = [exe, "moveto", src, dst]
     if dry_run:
         cmd.append("--dry-run")
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         return False, (out.stderr.strip() or "rclone moveto failed")
     return True, ""
@@ -112,7 +139,7 @@ def copyto(src: str, dst: str, extra: Optional[List[str]] = None,
         cmd.append("--dry-run")
     if extra:
         cmd += extra
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         return False, (out.stderr.strip() or "rclone copyto failed")
     return True, ""
@@ -121,7 +148,7 @@ def copyto(src: str, dst: str, extra: Optional[List[str]] = None,
 def remote_type(remote: str) -> str:
     """Return the rclone backend type for a remote (e.g. 'drive', 'onedrive')."""
     exe = ensure_rclone()
-    out = subprocess.run([exe, "config", "dump"], capture_output=True, text=True)
+    out = subprocess.run([exe, "config", "dump"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         return ""
     try:
@@ -190,7 +217,7 @@ def copy(
     if extra:
         cmd += extra
 
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     result.returncode = proc.returncode
 
     for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():

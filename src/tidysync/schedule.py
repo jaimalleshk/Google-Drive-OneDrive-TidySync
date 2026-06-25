@@ -54,7 +54,7 @@ def create(pair: str, config_path: Path,
     else:
         cmd += ["/SC", "DAILY", "/ST", daily]
 
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    out = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if out.returncode != 0:
         raise ScheduleError(out.stderr.strip() or out.stdout.strip() or "schtasks failed")
     return tn
@@ -63,7 +63,8 @@ def create(pair: str, config_path: Path,
 def delete(pair: str) -> str:
     tn = task_name(pair)
     out = subprocess.run(
-        ["schtasks", "/Delete", "/TN", tn, "/F"], capture_output=True, text=True
+        ["schtasks", "/Delete", "/TN", tn, "/F"],
+        capture_output=True, text=True, errors="replace",
     )
     if out.returncode != 0:
         raise ScheduleError(out.stderr.strip() or out.stdout.strip() or "schtasks failed")
@@ -73,6 +74,6 @@ def delete(pair: str) -> str:
 def query(pair: str) -> str:
     out = subprocess.run(
         ["schtasks", "/Query", "/TN", task_name(pair)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, errors="replace",
     )
     return out.stdout.strip() if out.returncode == 0 else (out.stderr.strip() or "not found")
