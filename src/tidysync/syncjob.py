@@ -154,7 +154,8 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
             try:
                 candidates = rclone.lsjson(
                     src, window, eff_filters,
-                    spinner_label=(f"scanning {src}" if progress else None))
+                    spinner_label=(f"scanning {src}" if progress else None),
+                    extra=pair.rclone_args)
             except rclone.RcloneError as exc:
                 result.errors.append(str(exc))
                 _trail(f"  ! scan failed: {exc}", progress)
@@ -169,7 +170,8 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
                 seen[folder][side].add(c["Path"])
 
             copy_res = rclone.copy(src, dst, window, eff_filters,
-                                   dry_run=dry_run, progress=progress)
+                                   dry_run=dry_run, progress=progress,
+                                   extra=pair.rclone_args)
             if dry_run:
                 _trail("  (dry run: the figures above are SIMULATED - nothing was transferred)",
                        progress)

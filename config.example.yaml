@@ -21,6 +21,18 @@ pairs:
       - "- ~$*"              # Office lock files
     convert_google_docs: true  # export native Google docs to .docx/.xlsx/.pptx on Drive, then sync
     dry_run: false
+    # Throttle rclone to stay under Google Drive's per-minute API quota
+    # (recommended for large drives / whole-drive scope):
+    rclone_args:
+      - --tpslimit
+      - "10"
+      - --drive-pacer-min-sleep
+      - 200ms
+      - --checkers
+      - "4"
+      - --transfers
+      - "2"
+      - --fast-list
 
   # One-way mirror of an entire drive, daily, anything changed in the last 24h
   - name: gd-to-od-fulldrive

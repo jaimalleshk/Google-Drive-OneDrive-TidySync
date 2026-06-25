@@ -30,6 +30,8 @@ class PairConfig:
     dry_run: bool = False
     # Convert Google Workspace docs to Office files on the Drive side before syncing.
     convert_google_docs: bool = True
+    # Extra rclone flags (e.g. throttling for API rate limits) appended to list/copy.
+    rclone_args: List[str] = field(default_factory=list)
 
     # resolved rclone remote strings, filled in by AppConfig
     left_remote: str = ""
@@ -156,6 +158,7 @@ def load_config(path: Path) -> AppConfig:
             filters=[str(f) for f in (p.get("filters") or [])],
             dry_run=bool(p.get("dry_run", False)),
             convert_google_docs=bool(p.get("convert_google_docs", True)),
+            rclone_args=[str(a) for a in (p.get("rclone_args") or [])],
         )
         pair.left_remote = remotes[left]
         pair.right_remote = remotes[right]

@@ -283,6 +283,28 @@ Every run writes three files to `reports/`:
 Dedupe runs write a parallel `dedupe_<remote>_<timestamp>.{html,csv,json}` showing each duplicate
 group with the kept vs quarantined copies, hashes, sizes and reclaimable space.
 
+## Troubleshooting
+
+**Google Drive `Error 403: rateLimitExceeded` / "Quota exceeded ... Queries per minute".**
+A large scan (especially `whole-drive`) fires too many Drive API calls per minute. Add throttling
+flags via a pair's `rclone_args` (see [`config.example.yaml`](config.example.yaml)):
+
+```yaml
+    rclone_args:
+      - --tpslimit
+      - "10"            # cap API calls/sec
+      - --drive-pacer-min-sleep
+      - 200ms
+      - --checkers
+      - "4"
+      - --transfers
+      - "2"
+      - --fast-list     # list big trees in far fewer API calls
+```
+
+Also prefer **`scope: folders`** over `whole-drive`, and keep a reasonable `delta.since` window —
+both dramatically cut the number of API calls. Nothing is harmed when this error occurs; just re-run.
+
 ## Safety notes
 
 - The first run of a `last-sync` pair refuses to proceed without an explicit `--since`,

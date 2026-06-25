@@ -129,12 +129,14 @@ def _filter_args(filters: List[str]) -> List[str]:
 
 def lsjson(path: str, max_age: Optional[str] = None,
            filters: Optional[List[str]] = None, with_hash: bool = False,
-           spinner_label: Optional[str] = None) -> List[dict]:
+           spinner_label: Optional[str] = None,
+           extra: Optional[List[str]] = None) -> List[dict]:
     """List files under `path` (recursively, files only).
 
     With `max_age` set, only files newer than it are returned. With `with_hash`,
     each item includes a "Hashes" mapping. Item keys: Path, Size, ModTime, IsDir
-    (+ Hashes when requested). `spinner_label` shows a live spinner while listing.
+    (+ Hashes when requested). `spinner_label` shows a live spinner while listing;
+    `extra` appends additional rclone flags (e.g. throttling).
     """
     exe = ensure_rclone()
     cmd = [exe, "lsjson", "-R", "--files-only"]
@@ -144,6 +146,8 @@ def lsjson(path: str, max_age: Optional[str] = None,
         cmd += ["--hash"]
     cmd.append(path)
     cmd += _filter_args(filters or [])
+    if extra:
+        cmd += extra
     rc, out, err = _run_capture(cmd, spinner_label=spinner_label)
     if rc != 0:
         raise RcloneError(f"rclone lsjson failed for {path}:\n{err.strip()}")
