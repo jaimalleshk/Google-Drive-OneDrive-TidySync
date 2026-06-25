@@ -101,6 +101,15 @@ Then use it exactly like the command above — e.g. `tidysync.exe init`, `tidysy
 or double-click it for the menu. (The exe bundles Python + TidySync, **not rclone** — rclone
 must still be installed.)
 
+### Option C — Download the prebuilt executable  *(nothing to install but rclone)*
+
+Grab `tidysync.exe` from the
+[**Releases page**](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/releases)
+(a copy also lives in the repo root). Install rclone, run `rclone config`, then run `tidysync.exe`.
+
+> The exe is **unsigned**, so Windows SmartScreen may warn on first launch — choose
+> *More info → Run anyway*, or build it yourself (Option B) if you prefer.
+
 ## Usage
 
 ### One entry point — the menu

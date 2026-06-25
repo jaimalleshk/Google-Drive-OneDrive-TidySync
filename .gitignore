@@ -4,8 +4,8 @@ state/
 reports/
 *.log
 
-# standalone build (PyInstaller) - the exe is large; build locally / attach to Releases
-/tidysync.exe
+# standalone build (PyInstaller) - intermediate artifacts only.
+# tidysync.exe IS committed (prebuilt download) - see README Option C.
 /build/
 /dist/
 *.spec
