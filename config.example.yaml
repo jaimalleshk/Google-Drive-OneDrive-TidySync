@@ -1,0 +1,32 @@
+# Copy to config.yaml and edit. See README for details.
+
+remotes:
+  gdrive: "gdrive:"          # names you gave in `rclone config`
+  onedrive: "onedrive:"
+
+pairs:
+  # Two-way delta sync of two listed folders
+  - name: projects
+    left: gdrive
+    right: onedrive
+    mode: two-way            # left-to-right | right-to-left | two-way
+    scope: folders           # whole-drive | folders
+    folders:
+      - "Projects/Active"
+      - "Shared/Docs"
+    delta:
+      since: last-sync       # last-sync | "2026-06-01" | "720h"
+    filters:
+      - "- *.tmp"
+      - "- ~$*"              # Office lock files
+    dry_run: false
+
+  # One-way mirror of an entire drive, daily, anything changed in the last 24h
+  - name: gd-to-od-fulldrive
+    left: gdrive
+    right: onedrive
+    mode: left-to-right
+    scope: whole-drive
+    delta:
+      since: "24h"
+    dry_run: false

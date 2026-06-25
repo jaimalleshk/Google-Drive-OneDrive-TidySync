@@ -1,0 +1,15 @@
+# local config & runtime artifacts
+config.yaml
+state/
+reports/
+*.log
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
