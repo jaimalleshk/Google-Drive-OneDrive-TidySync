@@ -32,12 +32,12 @@ Files move **cloud ↔ cloud directly** — they do not pass through any third-p
 (Hosted alternatives like MultCloud / cloudHQ do the same job but are metered/paid and route
 your data through their infrastructure.)
 
-> ### ⚠️ Status — early / not yet validated against live accounts
+> ### 🔬 Status — validation in progress
 > The logic is covered by **offline tests** (sync, dedupe, and the config wizard, with rclone
-> stubbed), but it has **not yet been run end-to-end against real Google Drive / OneDrive
-> accounts**. Treat it as **alpha**: try it on non-critical folders and use `--dry-run` first.
-> **Screenshots and a step-by-step user guide will be added once live testing is complete**
-> (private details blurred). Feedback and test reports are very welcome.
+> stubbed), and it has now been **exercised against live Google Drive / OneDrive accounts** —
+> authentication, listing, and dry-run sync are verified. Broader end-to-end validation (more
+> folders, real transfers, conflict cases) is **in progress**. Treat it as **pre-release**: try
+> it on non-critical folders and use `--dry-run` first. Feedback and test reports are welcome.
 
 ## How the delta model works
 
@@ -204,7 +204,7 @@ tidysync convert gdrive --folder "Projects" --apply
 > Notes: conversion uses rclone's `--drive-export-formats`. Don't configure an rclone
 > *import* format on the Drive remote, or the uploaded `.docx` would turn back into a Google Doc.
 > Forms/Sites and other types without an Office equivalent are reported as unsupported and skipped.
-> ⚠️ This path is part of the alpha and still needs validation against live accounts.
+> ⚠️ This path is still being validated against live accounts (see Status above).
 
 ## Screenshots
 
