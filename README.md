@@ -59,36 +59,37 @@ A file changed on *both* sides within the window is flagged in the report as a
 
 ## Setup
 
+**Step 1 (required either way): install rclone and authorise your clouds.**
+
 ```bash
-# 1. Install rclone and this tool
-winget install Rclone.Rclone
-pip install -e .          # from this folder; gives you the `tidysync` command
-
-# 2. Authorise your two clouds (opens a browser; uses YOUR Google/Microsoft accounts)
-rclone config             # create a Google Drive remote (e.g. "gdrive") and a OneDrive remote ("onedrive")
-
-# 3. Create and edit your config
-tidysync init             # writes config.yaml template
-#   ...edit config.yaml to map remotes and define pairs...
-
-# 4. Verify connectivity
-tidysync check
+winget install Rclone.Rclone   # or: https://rclone.org/downloads/
+rclone config                  # create a Google Drive remote ("gdrive") and a OneDrive remote ("onedrive")
 ```
 
 > Tip: for best Google Drive performance, create your own Google API client ID during
 > `rclone config` (rclone documents this).
 
-## Build a standalone executable (optional)
+**Step 2: choose how to run TidySync — Option A or Option B.**
 
-You only need this to run TidySync **without a Python install** (e.g. to hand someone a single
-file). If you have Python, skip it — `pip install -e .` already gives you the `tidysync` command.
+### Option A — Run with Python  *(simplest if you have Python 3.9+)*
 
 ```bash
-pip install -r requirements.txt pyinstaller   # PyYAML (app) + PyInstaller (builder)
-build_exe.bat                                  # Windows: produces tidysync.exe in this folder
+pip install -e .          # gives you the `tidysync` command (or use: python -m tidysync)
+tidysync init             # writes config.yaml; edit it to map remotes + define pairs
+tidysync check            # verify both clouds are reachable
+tidysync                  # open the menu
 ```
 
-On macOS/Linux, run what `build_exe.bat` runs:
+### Option B — Standalone executable  *(no Python needed to run)*
+
+Build a single `tidysync.exe` you can run yourself or hand to someone who has no Python:
+
+```bash
+pip install -r requirements.txt pyinstaller   # build-time only
+build_exe.bat                                  # Windows -> tidysync.exe in this folder
+```
+
+macOS/Linux build (PyInstaller **can't cross-compile** — build on the OS you'll run on):
 
 ```bash
 pyinstaller --onefile --console --name tidysync \
@@ -96,9 +97,9 @@ pyinstaller --onefile --console --name tidysync \
   --distpath . --workpath build/pyi --specpath build app.py
 ```
 
-- PyInstaller **cannot cross-compile**: build the Windows `.exe` on Windows; macOS/Linux produce a
-  `tidysync` binary (no extension) when built there.
-- The built binary still needs **rclone** installed at runtime (it bundles Python + TidySync, not rclone).
+Then use it exactly like the command above — e.g. `tidysync.exe init`, `tidysync.exe check`,
+or double-click it for the menu. (The exe bundles Python + TidySync, **not rclone** — rclone
+must still be installed.)
 
 ## Usage
 
