@@ -78,6 +78,28 @@ tidysync check
 > Tip: for best Google Drive performance, create your own Google API client ID during
 > `rclone config` (rclone documents this).
 
+## Build a standalone executable (optional)
+
+You only need this to run TidySync **without a Python install** (e.g. to hand someone a single
+file). If you have Python, skip it — `pip install -e .` already gives you the `tidysync` command.
+
+```bash
+pip install -r requirements.txt pyinstaller   # PyYAML (app) + PyInstaller (builder)
+build_exe.bat                                  # Windows: produces tidysync.exe in this folder
+```
+
+On macOS/Linux, run what `build_exe.bat` runs:
+
+```bash
+pyinstaller --onefile --console --name tidysync \
+  --paths src --collect-submodules tidysync \
+  --distpath . --workpath build/pyi --specpath build app.py
+```
+
+- PyInstaller **cannot cross-compile**: build the Windows `.exe` on Windows; macOS/Linux produce a
+  `tidysync` binary (no extension) when built there.
+- The built binary still needs **rclone** installed at runtime (it bundles Python + TidySync, not rclone).
+
 ## Usage
 
 ### One entry point — the menu
@@ -86,16 +108,21 @@ There is a **single command**, `tidysync`. Run it with no arguments (or double-c
 `start.bat` on Windows) to open an interactive menu — you never run individual `.py` files:
 
 ```
-========== tidysync : Drive <-> OneDrive ==========
-  1) Run a sync pair
-  2) Run all pairs
-  3) Find duplicates in a cloud (dedupe)
-  4) Configure / edit a sync pair
-  5) Schedule a pair   6) Unschedule a pair
-  7) Status            8) Check remotes
-  9) Create/repair config (init)
-  0) Quit
-===================================================
+================ TidySync : Google Drive <-> OneDrive ================
+  SYNC
+    1) Run a sync pair        copy recent changes between two clouds
+    2) Run all pairs          run every configured pair
+  MAINTAIN  (one cloud at a time)
+    3) Find duplicates        by content; move extras to a review folder
+    4) Convert Google docs    make .docx/.xlsx/.pptx copies on Google Drive
+  SETUP
+    5) Configure a pair       clouds, direction, folders, time window
+    6) Schedule a pair        7) Unschedule a pair
+    8) Status                 9) Check remotes
+   10) Create / repair config
+  ---------------------------------------------------------------------
+    h) Help (what each option does)                 0) Quit
+=====================================================================
 ```
 
 ### Interactive confirmation & config completion
