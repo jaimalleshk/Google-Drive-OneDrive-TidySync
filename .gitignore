@@ -4,6 +4,12 @@ state/
 reports/
 *.log
 
+# standalone build (PyInstaller) - the exe is large; build locally / attach to Releases
+/tidysync.exe
+/build/
+/dist/
+*.spec
+
 # python
 __pycache__/
 *.py[cod]
