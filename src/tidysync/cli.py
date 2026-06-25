@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from tidysync import __version__, dedupe, interactive, rclone, schedule
+from tidysync import __version__, dedupe, gdocs, interactive, rclone, schedule
 from tidysync.config import AppConfig, ConfigError, default_config_path, load_config
 from tidysync.report import write_dedupe_report, write_reports
 from tidysync.state import StateStore
@@ -233,6 +233,34 @@ def cmd_dedupe(args) -> int:
     return 1 if result.errors else 0
 
 
+def cmd_convert(args) -> int:
+    cfg = _load(args)
+    rclone.ensure_rclone()
+    if args.remote not in cfg.remotes:
+        known = ", ".join(cfg.remotes) or "(none)"
+        print(f"error: unknown remote '{args.remote}'. Configured remotes: {known}",
+              file=sys.stderr)
+        return 2
+    remote = cfg.remotes[args.remote]
+    rtype = rclone.remote_type(remote)
+    if rtype != "drive":
+        print(f"error: '{args.remote}' is type '{rtype or 'unknown'}'. "
+              "Google-doc conversion applies only to Google Drive remotes.", file=sys.stderr)
+        return 2
+    res = gdocs.run_convert(remote, folders=args.folder, dry_run=not args.apply)
+    t = res.totals
+    mode = "CONVERTED" if res.apply else "REPORT-ONLY"
+    print(f"\n{mode} {args.remote}: converted={t['converted']} uptodate={t['uptodate']} "
+          f"unsupported={t['unsupported']} errors={t['errors']}")
+    for c in res.converted[:30]:
+        print(f"    {c['path']} -> {c['out']}")
+    if not res.apply and res.converted:
+        print("  (re-run with --apply to create these Office files on Google Drive)")
+    for e in res.errors[:20]:
+        print(f"    x {e}")
+    return 1 if res.errors else 0
+
+
 def _dry(args) -> Optional[bool]:
     return True if getattr(args, "dry_run", False) else None
 
@@ -289,6 +317,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--quarantine", default=dedupe.QUARANTINE_DIR,
                     help=f"Quarantine folder name (default: {dedupe.QUARANTINE_DIR}).")
     sp.set_defaults(func=cmd_dedupe)
+
+    sp = sub.add_parser(
+        "convert",
+        help="Export Google Workspace docs to Office files on a Google Drive remote.")
+    sp.add_argument("remote", help="A Google Drive remote key from config 'remotes'.")
+    sp.add_argument("--folder", action="append",
+                    help="Limit to this folder (repeatable). Default: the whole remote.")
+    sp.add_argument("--apply", action="store_true",
+                    help="Create the Office files on Drive (default: report only).")
+    sp.set_defaults(func=cmd_convert)
 
     sp = sub.add_parser("schedule", help="Create a Windows scheduled task for a pair.")
     sp.add_argument("pair")

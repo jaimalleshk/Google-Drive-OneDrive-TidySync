@@ -29,7 +29,11 @@ Most tools do *one* of these. TidySync combines them — privately and for free:
    duplicated, and how much space you can reclaim. Neither raw rclone nor RcloneView produce these.
 4. **One menu-driven command + an interactive config wizard** — approachable for non-technical
    users, yet fully scriptable and schedulable for power users.
-5. **Private and free.** Files move **cloud ↔ cloud directly** through *your own* OAuth tokens —
+5. **Google Workspace docs become real Office files.** Native Docs/Sheets/Slides have no bytes,
+   so a plain sync copies useless link files to OneDrive. TidySync exports them to
+   `.docx`/`.xlsx`/`.pptx` so OneDrive gets editable files. (See
+   [Google Workspace docs → Office](#google-workspace-docs--office-convert).)
+6. **Private and free.** Files move **cloud ↔ cloud directly** through *your own* OAuth tokens —
    nothing passes through a third-party server, and there is no metering or subscription.
 
 > TidySync is an *opinionated layer on top of [rclone](https://rclone.org/)*: the sync engine is
@@ -134,6 +138,39 @@ tidysync unschedule projects
 
 On Linux/macOS, schedule with cron instead, e.g.:
 `*/30 * * * * tidysync --config /path/config.yaml run projects`
+
+## Google Workspace docs → Office (`convert`)
+
+Native Google docs (Docs/Sheets/Slides/Drawings) have **no downloadable bytes** — a plain sync
+turns them into useless link/shortcut files on OneDrive. TidySync fixes this: before syncing, it
+**exports each native doc to its Office equivalent and writes that real file into the same Google
+Drive folder**, so the sync then copies a usable file to OneDrive.
+
+| Google type | becomes |
+|-------------|---------|
+| Docs        | `.docx` |
+| Sheets      | `.xlsx` |
+| Slides      | `.pptx` |
+| Drawings    | `.svg`  |
+
+- **On by default** for every pair (`convert_google_docs: true`); runs automatically as a pre-step
+  of any sync where the source is a Google Drive remote.
+- **Idempotent** — a doc is re-converted only when its Office twin is missing or older than the doc,
+  so repeated syncs don't churn.
+- The original native doc stays in Drive; the new Office file sits **alongside it in the same
+  folder** (this is the default you chose). Both clouds end up with a real, editable Office file.
+- Run it standalone too:
+
+```bash
+tidysync convert gdrive            # report only: what would be converted
+tidysync convert gdrive --apply    # create the Office files on Drive
+tidysync convert gdrive --folder "Projects" --apply
+```
+
+> Notes: conversion uses rclone's `--drive-export-formats`. Don't configure an rclone
+> *import* format on the Drive remote, or the uploaded `.docx` would turn back into a Google Doc.
+> Forms/Sites and other types without an Office equivalent are reported as unsupported and skipped.
+> ⚠️ This path is part of the alpha and still needs validation against live accounts.
 
 ## Screenshots & user guide
 

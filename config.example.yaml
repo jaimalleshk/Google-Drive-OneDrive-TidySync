@@ -19,6 +19,7 @@ pairs:
     filters:
       - "- *.tmp"
       - "- ~$*"              # Office lock files
+    convert_google_docs: true  # export native Google docs to .docx/.xlsx/.pptx on Drive, then sync
     dry_run: false
 
   # One-way mirror of an entire drive, daily, anything changed in the last 24h

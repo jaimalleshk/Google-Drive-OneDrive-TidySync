@@ -59,9 +59,11 @@ _HTML = """<!DOCTYPE html>
  <div class="card"><div class="n">{skipped}</div><div class="l">Skipped (identical)</div></div>
  <div class="card warn"><div class="n">{conflicts}</div><div class="l">Conflicts</div></div>
  <div class="card err"><div class="n">{errors}</div><div class="l">Errors</div></div>
+ <div class="card"><div class="n">{converted}</div><div class="l">GDocs converted</div></div>
  <div class="card"><div class="n">{bytes}</div><div class="l">Transferred</div></div>
 </div>
 {conflict_block}
+{converted_block}
 <table><thead><tr>
  <th>File</th><th>Direction</th><th>Action</th><th>Size</th><th>Modified</th>
 </tr></thead><tbody>
@@ -120,14 +122,28 @@ def write_reports(result: RunResult, reports_dir: Path) -> Tuple[Path, Path, Pat
             f'<ul>{items}</ul>Resolved by newest-modified-wins.</div>'
         )
 
+    converted_block = ""
+    if result.converted:
+        verb = "Would convert" if result.dry_run else "Converted"
+        items = "".join(
+            f'<li><code>{html.escape(c["path"])}</code> &rarr; '
+            f'<code>{html.escape(c["out"])}</code></li>' for c in result.converted)
+        converted_block = (
+            f'<div class="dry"><b>{verb} Google docs to Office on the Drive side '
+            f'({len(result.converted)}; {result.conversion_uptodate} already up to date):</b>'
+            f'<ul>{items}</ul></div>'
+        )
+
     html_doc = _HTML.format(
         pair=html.escape(result.pair), mode=html.escape(result.mode),
         scope=html.escape(result.scope), since_spec=html.escape(result.since_spec),
         window=html.escape(result.window), started=result.started,
         finished=result.finished, duration=result.duration_s,
         dry_banner=dry_banner, err_banner=err_banner, conflict_block=conflict_block,
+        converted_block=converted_block,
         created=t["created"], updated=t["updated"], skipped=t["skipped_identical"],
         conflicts=t["conflicts"], errors=t["errors"], bytes=_human_bytes(t["bytes"]),
+        converted=len(result.converted),
         rows=_rows(result),
     )
     html_path.write_text(html_doc, encoding="utf-8")

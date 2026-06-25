@@ -245,16 +245,17 @@ def configure_pair(config_path: Path) -> None:
 # --- main menu -----------------------------------------------------------
 
 MENU = """
-========== tidysync : Drive <-> OneDrive ==========
+======== TidySync : Google Drive <-> OneDrive ========
   1) Run a sync pair
   2) Run all pairs
   3) Find duplicates in a cloud (dedupe)
-  4) Configure / edit a sync pair
-  5) Schedule a pair   6) Unschedule a pair
-  7) Status            8) Check remotes
-  9) Create/repair config (init)
+  4) Convert Google docs to Office (Drive)
+  5) Configure / edit a sync pair
+  6) Schedule a pair    7) Unschedule a pair
+  8) Status             9) Check remotes
+ 10) Create/repair config (init)
   0) Quit
-===================================================
+======================================================
 """
 
 
@@ -266,7 +267,7 @@ def _pick_pair_name(config_path) -> Optional[str]:
     raw = load_raw(config_path)
     names = [p.get("name") for p in (raw.get("pairs") or [])]
     if not names:
-        print("  No pairs configured yet — use option 4 to add one.")
+        print("  No pairs configured yet - use option 5 to add one.")
         return None
     return ask_choice("Which pair?", names, default=names[0])
 
@@ -275,7 +276,7 @@ def _pick_remote_key(config_path) -> Optional[str]:
     raw = load_raw(config_path)
     keys = list((raw.get("remotes") or {}).keys())
     if not keys:
-        print("  No remotes configured — use option 4 or edit the config.")
+        print("  No remotes configured - use option 5 or edit the config.")
         return None
     return ask_choice("Which cloud?", keys, default=keys[0])
 
@@ -309,8 +310,15 @@ def menu(config_path: Path) -> int:
                 cli.cmd_dedupe(_ns(config_path, remote=key, folder=None,
                                    apply=apply, quarantine=dedupe.QUARANTINE_DIR))
             elif choice == "4":
-                configure_pair(config_path)
+                key = _pick_remote_key(config_path)
+                if not key:
+                    continue
+                apply = ask_yes_no("Create the Office files on Drive now? "
+                                   "(No = report only)", default=False)
+                cli.cmd_convert(_ns(config_path, remote=key, folder=None, apply=apply))
             elif choice == "5":
+                configure_pair(config_path)
+            elif choice == "6":
                 name = _pick_pair_name(config_path)
                 if not name:
                     continue
@@ -322,15 +330,15 @@ def menu(config_path: Path) -> int:
                 else:
                     daily = ask("Time (HH:MM)", default="02:00")
                     cli.cmd_schedule(_ns(config_path, pair=name, every=None, daily=daily))
-            elif choice == "6":
+            elif choice == "7":
                 name = _pick_pair_name(config_path)
                 if name:
                     cli.cmd_unschedule(_ns(config_path, pair=name))
-            elif choice == "7":
-                cli.cmd_status(_ns(config_path))
             elif choice == "8":
-                cli.cmd_check(_ns(config_path))
+                cli.cmd_status(_ns(config_path))
             elif choice == "9":
+                cli.cmd_check(_ns(config_path))
+            elif choice == "10":
                 cli.cmd_init(_ns(config_path, force=False))
             elif choice in ("0", "q", "quit", "exit"):
                 print("bye.")

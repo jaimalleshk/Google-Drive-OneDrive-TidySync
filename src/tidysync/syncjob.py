@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from tidysync import rclone
+from tidysync import gdocs, rclone
 from tidysync.config import AppConfig, PairConfig
 from tidysync.dedupe import QUARANTINE_DIR
 from tidysync.state import StateStore, utcnow_iso
@@ -30,6 +30,8 @@ class RunResult:
     items: List[dict] = field(default_factory=list)   # one row per delta file
     conflicts: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    converted: List[dict] = field(default_factory=list)  # Google docs -> Office on Drive
+    conversion_uptodate: int = 0
 
     @property
     def totals(self) -> Dict[str, int]:
@@ -106,6 +108,23 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
     folders = _folders(pair)
     # Never sync the dedupe quarantine folder between clouds.
     eff_filters = [f"- {QUARANTINE_DIR}/**"] + pair.filters
+
+    # Pre-step: on any Google Drive source, export native Google docs to Office
+    # files (.docx/.xlsx/.pptx) in place, so the sync copies usable files. The new
+    # files land with a fresh modtime and are picked up by the delta window below.
+    if pair.convert_google_docs:
+        conv_folders = pair.folders if pair.scope == "folders" else None
+        for src_remote in {sr for _, sr, _ in directions}:
+            try:
+                if rclone.remote_type(src_remote) != "drive":
+                    continue
+            except Exception as exc:  # detection failure shouldn't abort the sync
+                result.errors.append(f"google-doc detection skipped: {exc}")
+                continue
+            cres = gdocs.run_convert(src_remote, conv_folders, eff_filters, dry_run=dry_run)
+            result.converted.extend(cres.converted)
+            result.conversion_uptodate += len(cres.skipped_uptodate)
+            result.errors.extend(cres.errors)
 
     # Track per-folder deltas seen from each remote, to detect both-sides edits.
     seen: Dict[str, Dict[str, set]] = {}  # folder -> {"L": set(paths), "R": set(paths)}

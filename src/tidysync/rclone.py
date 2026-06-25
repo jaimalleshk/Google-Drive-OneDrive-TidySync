@@ -103,6 +103,35 @@ def moveto(src: str, dst: str, dry_run: bool = False) -> Tuple[bool, str]:
     return True, ""
 
 
+def copyto(src: str, dst: str, extra: Optional[List[str]] = None,
+           dry_run: bool = False) -> Tuple[bool, str]:
+    """Copy a single file src -> dst (used for Google-doc export/upload)."""
+    exe = ensure_rclone()
+    cmd = [exe, "copyto", src, dst]
+    if dry_run:
+        cmd.append("--dry-run")
+    if extra:
+        cmd += extra
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0:
+        return False, (out.stderr.strip() or "rclone copyto failed")
+    return True, ""
+
+
+def remote_type(remote: str) -> str:
+    """Return the rclone backend type for a remote (e.g. 'drive', 'onedrive')."""
+    exe = ensure_rclone()
+    out = subprocess.run([exe, "config", "dump"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return ""
+    try:
+        data = json.loads(out.stdout or "{}")
+    except json.JSONDecodeError:
+        return ""
+    name = remote.split(":")[0]
+    return (data.get(name) or {}).get("type", "")
+
+
 @dataclass
 class CopyResult:
     src: str

@@ -28,6 +28,8 @@ class PairConfig:
     since: str = "last-sync"
     filters: List[str] = field(default_factory=list)
     dry_run: bool = False
+    # Convert Google Workspace docs to Office files on the Drive side before syncing.
+    convert_google_docs: bool = True
 
     # resolved rclone remote strings, filled in by AppConfig
     left_remote: str = ""
@@ -153,6 +155,7 @@ def load_config(path: Path) -> AppConfig:
             since=str(since),
             filters=[str(f) for f in (p.get("filters") or [])],
             dry_run=bool(p.get("dry_run", False)),
+            convert_google_docs=bool(p.get("convert_google_docs", True)),
         )
         pair.left_remote = remotes[left]
         pair.right_remote = remotes[right]

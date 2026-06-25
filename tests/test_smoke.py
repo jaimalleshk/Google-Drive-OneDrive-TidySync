@@ -73,6 +73,7 @@ def main():
     rclone.ensure_rclone = fake_ensure
     rclone.lsjson = fake_lsjson
     rclone.copy = fake_copy
+    rclone.remote_type = lambda r: ""   # not Google Drive -> skip gdoc conversion here
 
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
