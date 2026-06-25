@@ -3,41 +3,34 @@
 > Private, free, two-way **delta sync** + **content-hash duplicate detection** between Google
 > Drive and OneDrive — driven by a single menu-based command (`tidysync`), built on rclone.
 
+## ✨ What makes TidySync unique
+
+Most tools do *one* of these. TidySync combines them — **privately and for free** (your files
+move cloud ↔ cloud directly via your own OAuth; nothing transits a third-party server):
+
+| # | Feature | Why it's different |
+|---|---------|--------------------|
+| 1 | **Content-hash duplicate detection + quarantine** *(headline)* | Finds files with **identical content under any name, in any folder**, keeps the newest, moves the rest to `_duplicates/` for review. rclone's own `dedupe` only catches same-*name* files on Google Drive; MultCloud/cloudHQ don't do content dedupe at all. |
+| 2 | **Safe-by-default delta sync** | Only what changed since last run, **newest-wins**, **never deletes**, refuses an accidental full-drive copy. No rclone flags to learn. |
+| 3 | **Convert all Google Workspace files to Microsoft Office format** | Converts native Google Docs/Sheets/Slides to `.docx/.xlsx/.pptx` — on demand (recursive, in place, only where missing) or automatically during sync — so OneDrive gets **editable Office files** instead of useless link stubs. |
+| 4 | **Per-run reports** (HTML + CSV + JSON) | Exactly what changed, what's duplicated, and reclaimable space. Neither raw rclone nor RcloneView produce these. |
+| 5 | **One menu-driven command + config wizard** | Approachable for non-technical users, fully scriptable & schedulable for power users — with live progress (ETA, files done/pending). |
+| 6 | **Private & free** | Direct cloud ↔ cloud via *your own* OAuth tokens. No third-party server, no metering, no subscription. |
+
+> TidySync is an *opinionated layer on top of [rclone](https://rclone.org/)*: the sync engine is
+> rclone's; the **duplicate detection, Office conversion, reporting, safety defaults and UX are
+> what TidySync adds**.
+
+## What it does
+
 A small, opinionated CLI that syncs **deltas** (newly created + recently modified files
 and folders) between Google Drive and OneDrive — one-way in either direction, or two-way,
 on demand or on a schedule — and writes a report of exactly what was synced.
 
-It is an orchestration layer on top of [**rclone**](https://rclone.org/), the
-battle-tested open-source engine that talks directly to Google Drive and Microsoft Graph
-using **your own** OAuth credentials. Files move **cloud ↔ cloud directly** — they do not
-pass through any third-party server. (Hosted alternatives like MultCloud / cloudHQ do the
-same job but are metered/paid and route your data through their infrastructure.)
-
-## ✨ What makes TidySync unique
-
-Most tools do *one* of these. TidySync combines them — privately and for free:
-
-1. **Content-hash duplicate detection with quarantine-for-review — the headline feature.**
-   Finds files with **identical content under any name, in any folder**, keeps the newest, and
-   moves the rest to a `_duplicates/` folder for you to review and delete. rclone's own `dedupe`
-   only catches same-*name* files on Google Drive; the hosted tools (MultCloud / cloudHQ) don't do
-   content dedupe at all. (See [Duplicate detection](#duplicate-detection-dedupe).)
-2. **Safe-by-default cross-cloud delta sync — no rclone flags to learn.** Only what changed since
-   the last run, **newest-wins**, **never deletes**, and it refuses an accidental full-drive copy.
-   The safe path is the default path.
-3. **Per-run reports for both sync and dedupe** (HTML + CSV + JSON) — exactly what changed, what's
-   duplicated, and how much space you can reclaim. Neither raw rclone nor RcloneView produce these.
-4. **One menu-driven command + an interactive config wizard** — approachable for non-technical
-   users, yet fully scriptable and schedulable for power users.
-5. **Google Workspace docs become real Office files.** Native Docs/Sheets/Slides have no bytes,
-   so a plain sync copies useless link files to OneDrive. TidySync exports them to
-   `.docx`/`.xlsx`/`.pptx` so OneDrive gets editable files. (See
-   [Google Workspace docs → Office](#google-workspace-docs--office-convert).)
-6. **Private and free.** Files move **cloud ↔ cloud directly** through *your own* OAuth tokens —
-   nothing passes through a third-party server, and there is no metering or subscription.
-
-> TidySync is an *opinionated layer on top of [rclone](https://rclone.org/)*: the sync engine is
-> rclone's; the duplicate detection, reporting, safety defaults and UX are what TidySync adds.
+It talks directly to Google Drive and Microsoft Graph using **your own** OAuth credentials.
+Files move **cloud ↔ cloud directly** — they do not pass through any third-party server.
+(Hosted alternatives like MultCloud / cloudHQ do the same job but are metered/paid and route
+your data through their infrastructure.)
 
 > ### ⚠️ Status — early / not yet validated against live accounts
 > The logic is covered by **offline tests** (sync, dedupe, and the config wizard, with rclone
