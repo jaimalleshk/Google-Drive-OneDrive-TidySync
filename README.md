@@ -3,6 +3,10 @@
 > Private, free, two-way **delta sync** + **content-hash duplicate detection** between Google
 > Drive and OneDrive — driven by a single menu-based command (`tidysync`), built on rclone.
 
+[![CI](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/actions/workflows/ci.yml/badge.svg)](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jaimalleshk/Google-Drive-OneDrive-TidySync?include_prereleases)](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 ## ✨ What makes TidySync unique
 
 Most tools do *one* of these. TidySync combines them — **privately and for free** (your files
@@ -313,6 +317,17 @@ both dramatically cut the number of API calls. Nothing is harmed when this error
 - Use `filters` to exclude temp/lock files (`~$*`, `*.tmp`, etc.).
 - Two-way sync compares between runs, not in real time — avoid editing the same file on both
   sides simultaneously; shorter schedules reduce the conflict window.
+
+## Feedback & contributing
+
+Questions, ideas, and bug reports are very welcome — **no email needed**:
+
+- 🐛 **Bugs / feature requests:** open an [issue](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/issues).
+- 💬 **Questions / ideas / "it worked!" reports:** start a [discussion](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/discussions).
+- 🤝 **Pull requests:** see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Since it's pre-release, **real-world test reports** (what worked, what didn't, on which OS/accounts)
+are especially valuable.
 
 ## License
 
