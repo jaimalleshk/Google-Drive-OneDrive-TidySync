@@ -89,6 +89,10 @@ pip install -r requirements.txt pyinstaller   # build-time only
 build_exe.bat                                  # Windows -> tidysync.exe in this folder
 ```
 
+> Maintainers: `publish_exe.bat` rebuilds **and** auto-refreshes the committed `tidysync.exe`
+> (commit + push) and updates the latest GitHub Release asset. Use plain `build_exe.bat` for a
+> build-only run.
+
 macOS/Linux build (PyInstaller **can't cross-compile** — build on the OS you'll run on):
 
 ```bash
