@@ -13,10 +13,34 @@ using **your own** OAuth credentials. Files move **cloud ↔ cloud directly** �
 pass through any third-party server. (Hosted alternatives like MultCloud / cloudHQ do the
 same job but are metered/paid and route your data through their infrastructure.)
 
-**What it adds over raw rclone:** an opinionated timestamp-windowed delta model (never deletes,
-newest-wins), per-run HTML/CSV/JSON reports, config-driven multi-pair scheduling — and
-**content-hash duplicate detection with a review-and-delete workflow** (see [Duplicate
-detection](#duplicate-detection-dedupe)), which rclone does not provide.
+## ✨ What makes TidySync unique
+
+Most tools do *one* of these. TidySync combines them — privately and for free:
+
+1. **Content-hash duplicate detection with quarantine-for-review — the headline feature.**
+   Finds files with **identical content under any name, in any folder**, keeps the newest, and
+   moves the rest to a `_duplicates/` folder for you to review and delete. rclone's own `dedupe`
+   only catches same-*name* files on Google Drive; the hosted tools (MultCloud / cloudHQ) don't do
+   content dedupe at all. (See [Duplicate detection](#duplicate-detection-dedupe).)
+2. **Safe-by-default cross-cloud delta sync — no rclone flags to learn.** Only what changed since
+   the last run, **newest-wins**, **never deletes**, and it refuses an accidental full-drive copy.
+   The safe path is the default path.
+3. **Per-run reports for both sync and dedupe** (HTML + CSV + JSON) — exactly what changed, what's
+   duplicated, and how much space you can reclaim. Neither raw rclone nor RcloneView produce these.
+4. **One menu-driven command + an interactive config wizard** — approachable for non-technical
+   users, yet fully scriptable and schedulable for power users.
+5. **Private and free.** Files move **cloud ↔ cloud directly** through *your own* OAuth tokens —
+   nothing passes through a third-party server, and there is no metering or subscription.
+
+> TidySync is an *opinionated layer on top of [rclone](https://rclone.org/)*: the sync engine is
+> rclone's; the duplicate detection, reporting, safety defaults and UX are what TidySync adds.
+
+> ### ⚠️ Status — early / not yet validated against live accounts
+> The logic is covered by **offline tests** (sync, dedupe, and the config wizard, with rclone
+> stubbed), but it has **not yet been run end-to-end against real Google Drive / OneDrive
+> accounts**. Treat it as **alpha**: try it on non-critical folders and use `--dry-run` first.
+> **Screenshots and a step-by-step user guide will be added once live testing is complete**
+> (private details blurred). Feedback and test reports are very welcome.
 
 ## How the delta model works
 
@@ -110,6 +134,13 @@ tidysync unschedule projects
 
 On Linux/macOS, schedule with cron instead, e.g.:
 `*/30 * * * * tidysync --config /path/config.yaml run projects`
+
+## Screenshots & user guide
+
+_Coming soon._ Once TidySync has been validated against live Google Drive / OneDrive accounts,
+this section will include annotated screenshots of the menu, a sync report, and a dedupe report,
+plus a step-by-step walkthrough — with any private information (account names, file paths)
+blurred. Want to help? Run it against your own accounts and open an issue with feedback.
 
 ## Configuration
 
