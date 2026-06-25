@@ -206,12 +206,26 @@ tidysync convert gdrive --folder "Projects" --apply
 > Forms/Sites and other types without an Office equivalent are reported as unsupported and skipped.
 > ⚠️ This path is part of the alpha and still needs validation against live accounts.
 
-## Screenshots & user guide
+## Screenshots
 
-_Coming soon._ Once TidySync has been validated against live Google Drive / OneDrive accounts,
-this section will include annotated screenshots of the menu, a sync report, and a dedupe report,
-plus a step-by-step walkthrough — with any private information (account names, file paths)
-blurred. Want to help? Run it against your own accounts and open an issue with feedback.
+> Illustrative mockups with sample (non-personal) data — the real output is the same.
+
+**One entry point — the menu** (`tidysync` with no arguments, or double-click `tidysync.exe`):
+
+![TidySync interactive menu](docs/screenshots/01-menu.svg)
+
+**A two-way sync run** — confirmation, live scan spinner, rclone's progress (%, speed, ETA,
+files), and a final summary with a link to the report:
+
+![Two-way sync run with live progress](docs/screenshots/02-sync-run.svg)
+
+**The per-run report** (HTML, plus CSV + JSON) — totals at a glance and a per-file table with
+direction, action, and conflict flags:
+
+![HTML sync report](docs/screenshots/03-report.svg)
+
+_A full step-by-step user guide with real (blurred) screenshots will follow once live testing
+against personal accounts is complete._
 
 ## Configuration
 
