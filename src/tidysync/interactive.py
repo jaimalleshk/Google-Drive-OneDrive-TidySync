@@ -342,7 +342,8 @@ def menu(config_path: Path) -> int:
                     continue
                 dry = ask_yes_no("Dry run (report only, no transfer)?", default=False)
                 cli._do_run(load_config(config_path), name, since=None,
-                            dry_run=True if dry else None, progress=True)
+                            dry_run=True if dry else None, progress=True,
+                            open_report=True)
             elif choice == "2":
                 dry = ask_yes_no("Dry run for all pairs?", default=False)
                 cli.cmd_run_all(_ns(config_path, since=None, dry_run=dry))

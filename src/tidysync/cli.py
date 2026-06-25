@@ -63,7 +63,12 @@ def _print_result(result: RunResult, html_path: Path) -> None:
         print("  errors:")
         for e in result.errors[:20]:
             print(f"    x {e}")
+    try:
+        url = Path(html_path).resolve().as_uri()
+    except Exception:
+        url = str(html_path)
     print(f"  report: {html_path}")
+    print(f"  open:   {url}")
 
 
 # --- subcommands ---------------------------------------------------------
@@ -118,8 +123,17 @@ def cmd_check(args) -> int:
     return 0 if ok else 1
 
 
+def _open_report(html_path: Path) -> None:
+    try:
+        import webbrowser
+        webbrowser.open(Path(html_path).resolve().as_uri())
+    except Exception:
+        pass
+
+
 def _do_run(cfg: AppConfig, pair_name: str, since: Optional[str],
-            dry_run: Optional[bool], progress: bool = False) -> int:
+            dry_run: Optional[bool], progress: bool = False,
+            open_report: bool = False) -> int:
     store = _store(cfg)
     pair = cfg.pair(pair_name)
     result = run_pair(cfg, pair, store, since_override=since,
@@ -134,6 +148,8 @@ def _do_run(cfg: AppConfig, pair_name: str, since: Optional[str],
         if last:
             store.set_last_sync(pair.name, last, report=str(html_path))
     _print_result(result, html_path)
+    if open_report:
+        _open_report(html_path)
     return 1 if result.errors else 0
 
 
@@ -151,7 +167,9 @@ def cmd_run(args) -> int:
             print("Aborted — config not confirmed.")
             return 1
     cfg = _load(args)
-    return _do_run(cfg, args.pair, args.since, _dry(args), progress=_progress_on(args))
+    on = _progress_on(args)
+    return _do_run(cfg, args.pair, args.since, _dry(args),
+                   progress=on, open_report=on and not args.no_open)
 
 
 def cmd_menu(args) -> int:
@@ -309,6 +327,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--since", help="Override delta start: date '2026-06-01' or duration '720h'.")
     sp.add_argument("--dry-run", action="store_true", help="Report only; transfer nothing.")
     sp.add_argument("--quiet", action="store_true", help="No live progress bar / trail.")
+    sp.add_argument("--no-open", action="store_true",
+                    help="Don't auto-open the HTML report when finished.")
     sp.set_defaults(func=cmd_run)
 
     sp = sub.add_parser("run-all", help="Run every configured pair.")
