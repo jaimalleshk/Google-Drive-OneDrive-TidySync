@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import glob
-import itertools
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,37 +28,75 @@ DEFAULT_RCLONE_ARGS = [
 ]
 
 
-def _run_capture(cmd: List[str], spinner_label: Optional[str] = None) -> Tuple[int, str, str]:
+def _indeterminate_bar(tick: int, width: int = 22) -> str:
+    """An animated 'bouncing block' bar (ASCII) for when the total is unknown."""
+    span = width - 4
+    pos = tick % (2 * span)
+    if pos >= span:
+        pos = 2 * span - pos
+    cells = ["-"] * width
+    for i in range(pos, min(width, pos + 4)):
+        cells[i] = "#"
+    return "".join(cells)
+
+
+def _run_capture(cmd: List[str], spinner_label: Optional[str] = None,
+                 count_files: bool = False) -> Tuple[int, str, str]:
     """Run a command, capturing stdout/stderr as UTF-8.
 
-    If spinner_label is given, show a live spinner with elapsed seconds on stderr
-    while the command runs (output goes to temp files to avoid pipe deadlocks on
-    large listings).
+    With spinner_label, show live progress on stderr while it runs. With count_files,
+    stream stdout and show a running count of files discovered (lsjson emits one
+    object per line, each containing "Path") plus elapsed time and an animated bar.
     """
     if not spinner_label:
         out = subprocess.run(cmd, capture_output=True, text=True,
                              encoding="utf-8", errors="replace")
         return out.returncode, out.stdout or "", out.stderr or ""
 
-    with tempfile.TemporaryFile() as ofh, tempfile.TemporaryFile() as efh:
-        proc = subprocess.Popen(cmd, stdout=ofh, stderr=efh)
-        frames = itertools.cycle("|/-\\")
-        start = time.time()
-        try:
-            while proc.poll() is None:
-                sys.stderr.write(f"\r  {next(frames)} {spinner_label} "
-                                 f"({int(time.time() - start)}s) ")
-                sys.stderr.flush()
-                time.sleep(0.15)
-        finally:
-            proc.wait()
-            sys.stderr.write("\r" + " " * 78 + "\r")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, encoding="utf-8", errors="replace", bufsize=1)
+    out_chunks: List[str] = []
+    err_chunks: List[str] = []
+    state = {"files": 0}
+
+    def _read_out():
+        for line in proc.stdout:
+            out_chunks.append(line)
+            if count_files and '"Path"' in line:
+                state["files"] += 1
+
+    def _read_err():
+        for line in proc.stderr:
+            err_chunks.append(line)
+
+    t_out = threading.Thread(target=_read_out, daemon=True)
+    t_err = threading.Thread(target=_read_err, daemon=True)
+    t_out.start()
+    t_err.start()
+
+    start = time.time()
+    started = time.strftime("%H:%M:%S", time.localtime(start))
+    tick = 0
+    try:
+        while proc.poll() is None:
+            tick += 1
+            el = int(time.time() - start)
+            bar = _indeterminate_bar(tick)
+            if count_files:
+                sys.stderr.write(f"\r  [{bar}] {spinner_label}: {state['files']:,} files found"
+                                 f"  (started {started}, elapsed {el}s) ")
+            else:
+                sys.stderr.write(f"\r  [{bar}] {spinner_label}"
+                                 f"  (started {started}, elapsed {el}s) ")
             sys.stderr.flush()
-        ofh.seek(0)
-        efh.seek(0)
-        out = ofh.read().decode("utf-8", "replace")
-        err = efh.read().decode("utf-8", "replace")
-    return proc.returncode, out, err
+            time.sleep(0.2)
+    finally:
+        proc.wait()
+        t_out.join(timeout=5)
+        t_err.join(timeout=5)
+        sys.stderr.write("\r" + " " * 92 + "\r")
+        sys.stderr.flush()
+    return proc.returncode, "".join(out_chunks), "".join(err_chunks)
 
 
 class RcloneError(Exception):
@@ -160,7 +198,7 @@ def lsjson(path: str, max_age: Optional[str] = None,
     cmd += _filter_args(filters or [])
     if extra:
         cmd += extra
-    rc, out, err = _run_capture(cmd, spinner_label=spinner_label)
+    rc, out, err = _run_capture(cmd, spinner_label=spinner_label, count_files=True)
     if rc != 0:
         raise RcloneError(f"rclone lsjson failed for {path}:\n{err.strip()}")
     try:
