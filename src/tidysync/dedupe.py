@@ -108,11 +108,24 @@ def _join(remote: str, rel: str) -> str:
     return remote.rstrip("/") + "/" + rel
 
 
-def _scan_paths(remote: str, folders: Optional[List[str]]) -> List[Tuple[str, str]]:
-    """Return (scan_path, prefix) pairs. prefix is the folder relative to remote root."""
+def _scan_targets(remote, folders, filters, extra, quarantine, result):
+    """Return (scan_path, prefix, max_depth) targets to scan.
+
+    For an explicit folder list, scan each. For whole-drive, scan each TOP-LEVEL
+    folder separately (plus root-level files) so one unlistable folder — e.g.
+    OneDrive Personal Vault — only fails itself instead of aborting everything.
+    """
     if folders:
-        return [(_join(remote, f), f) for f in folders]
-    return [(remote, "")]
+        return [(_join(remote, f), f, None) for f in folders]
+    try:
+        topdirs = rclone.list_dirs(remote, filters=filters, extra=extra)
+    except rclone.RcloneError as exc:
+        result.errors.append(f"could not list top-level folders: {exc}")
+        return [(remote, "", None)]   # fallback: single recursive scan
+    topdirs = [d for d in topdirs if d != quarantine]
+    targets = [(remote, "", 1)]       # root-level loose files (depth 1)
+    targets += [(_join(remote, d), d, None) for d in topdirs]
+    return targets
 
 
 def _pick_canonical(files: List[dict]) -> Tuple[dict, List[dict]]:
@@ -148,12 +161,17 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
     )
 
     by_hash: Dict[Tuple[str, str], List[dict]] = {}
-    for scan_path, prefix in _scan_paths(remote, folders):
+    targets = _scan_targets(remote, folders, filters, extra, quarantine, result)
+    for scan_path, prefix, max_depth in targets:
+        # --fast-list ignores --max-depth (lists everything first), so drop it for
+        # the shallow root scan to avoid re-traversing unlistable folders.
+        eff_extra = ([a for a in (extra or []) if a != "--fast-list"]
+                     if max_depth is not None else extra)
         try:
             items = rclone.lsjson(
                 scan_path, filters=filters, with_hash=True,
                 spinner_label=(f"hashing {scan_path}" if progress else None),
-                extra=extra)
+                extra=eff_extra, max_depth=max_depth)
         except rclone.RcloneError as exc:
             result.errors.append(str(exc))
             continue
@@ -196,19 +214,21 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
 
 def apply_quarantine(result: DedupeResult, dry_run: bool = False,
                      progress: bool = False, extra: Optional[List[str]] = None) -> None:
-    """Move every quarantined file to <remote>:<quarantine>/<original path>."""
-    from tidysync.progress import Counter
+    """Move all quarantined files into <remote>:<quarantine>/ in ONE server-side
+    rclone move (fast), preserving each file's original relative path."""
     result.apply = not dry_run
-    total = sum(len(g.quarantined) for g in result.groups)
-    counter = Counter(total, "moved to quarantine", on=progress)
-    for group in result.groups:
-        for f in group.quarantined:
-            full = f["_full"]
-            counter.step(full)
-            src = _join(result.remote, full)
-            dst = _join(result.remote, f"{result.quarantine}/{full}")
-            ok, err = rclone.moveto(src, dst, dry_run=dry_run, extra=extra)
-            f["_moved"] = ok and not dry_run
-            if not ok:
-                result.errors.append(f"{full}: {err}")
-    counter.close()
+    paths = [f["_full"] for g in result.groups for f in g.quarantined]
+    if not paths:
+        return
+    if progress:
+        import sys
+        sys.stderr.write(f"  moving {len(paths)} file(s) to {result.quarantine}/ "
+                         "(single server-side move)...\n")
+        sys.stderr.flush()
+    ok, errs = rclone.move_batch(result.remote, result.quarantine, paths,
+                                 extra=extra, dry_run=dry_run, progress=progress)
+    result.errors.extend(errs)
+    moved = ok and not dry_run
+    for g in result.groups:
+        for f in g.quarantined:
+            f["_moved"] = moved

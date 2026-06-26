@@ -29,11 +29,15 @@ FILES = {
     ],
 }
 
-MOVES = []
+MOVES = []      # (remote, dst_subdir, paths)
 
 
 def fake_ensure():
     return "rclone"
+
+
+def fake_list_dirs(remote, filters=None, extra=None):
+    return []    # no subfolders -> single root scan (test data is flat)
 
 
 def fake_lsjson(path, max_age=None, filters=None, with_hash=False, **kwargs):
@@ -41,15 +45,16 @@ def fake_lsjson(path, max_age=None, filters=None, with_hash=False, **kwargs):
     return FILES.get(path, [])
 
 
-def fake_moveto(src, dst, dry_run=False, **kwargs):
-    MOVES.append((src, dst, dry_run))
-    return True, ""
+def fake_move_batch(remote, dst_subdir, paths, extra=None, dry_run=False, progress=False):
+    MOVES.append((remote, dst_subdir, list(paths)))
+    return True, []
 
 
 def main():
     rclone.ensure_rclone = fake_ensure
+    rclone.list_dirs = fake_list_dirs
     rclone.lsjson = fake_lsjson
-    rclone.moveto = fake_moveto
+    rclone.move_batch = fake_move_batch
 
     result = dedupe.find_duplicates("gdrive:")
     t = result.totals
@@ -68,7 +73,8 @@ def main():
     assert [f["_full"] for f in g.quarantined] == ["a.txt"], "older copy must be quarantined"
 
     dedupe.apply_quarantine(result, dry_run=False)
-    assert MOVES == [("gdrive:a.txt", "gdrive:_duplicates/a.txt", False)], MOVES
+    # one batched move of all quarantined paths
+    assert MOVES == [("gdrive:", "_duplicates", ["a.txt"])], MOVES
     assert result.groups[0].quarantined[0]["_moved"] is True
     print("moves:", MOVES)
 

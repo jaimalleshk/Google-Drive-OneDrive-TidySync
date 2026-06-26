@@ -180,7 +180,8 @@ def _filter_args(filters: List[str]) -> List[str]:
 def lsjson(path: str, max_age: Optional[str] = None,
            filters: Optional[List[str]] = None, with_hash: bool = False,
            spinner_label: Optional[str] = None,
-           extra: Optional[List[str]] = None) -> List[dict]:
+           extra: Optional[List[str]] = None,
+           max_depth: Optional[int] = None) -> List[dict]:
     """List files under `path` (recursively, files only).
 
     With `max_age` set, only files newer than it are returned. With `with_hash`,
@@ -190,6 +191,8 @@ def lsjson(path: str, max_age: Optional[str] = None,
     """
     exe = ensure_rclone()
     cmd = [exe, "lsjson", "-R", "--files-only"]
+    if max_depth is not None:
+        cmd += ["--max-depth", str(max_depth)]
     if max_age:
         cmd += ["--max-age", max_age]
     if with_hash:
@@ -205,6 +208,83 @@ def lsjson(path: str, max_age: Optional[str] = None,
         return json.loads(out or "[]")
     except json.JSONDecodeError as exc:
         raise RcloneError(f"Could not parse lsjson output for {path}: {exc}")
+
+
+def list_dirs(remote: str, filters: Optional[List[str]] = None,
+              extra: Optional[List[str]] = None) -> List[str]:
+    """List top-level directory names under a remote (one level deep)."""
+    exe = ensure_rclone()
+    cmd = [exe, "lsf", "--dirs-only", "--max-depth", "1", remote]
+    cmd += _filter_args(filters or [])
+    if extra:
+        cmd += extra
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if out.returncode != 0:
+        raise RcloneError(f"rclone lsf failed for {remote}:\n{out.stderr.strip()}")
+    return [line.rstrip("/").strip() for line in out.stdout.splitlines() if line.strip()]
+
+
+def move_batch(remote: str, dst_subdir: str, paths: List[str],
+               extra: Optional[List[str]] = None, dry_run: bool = False,
+               progress: bool = False) -> Tuple[bool, List[str]]:
+    """Move many files (paths relative to remote root) into remote:<dst_subdir>/ in
+    ONE server-side rclone process. Far faster than per-file moveto. Returns
+    (ok, error_lines)."""
+    exe = ensure_rclone()
+    if not paths:
+        return True, []
+    dst = (remote + dst_subdir if remote.endswith(":")
+           else remote.rstrip("/") + "/" + dst_subdir)
+
+    with tempfile.NamedTemporaryFile("w", suffix=".lst", delete=False,
+                                     encoding="utf-8") as lf:
+        lf.write("\n".join(paths))
+        listfile = lf.name
+    with tempfile.NamedTemporaryFile("r", suffix=".log", delete=False,
+                                     encoding="utf-8") as tf:
+        logpath = tf.name
+
+    cmd = [exe, "move", remote, dst,
+           "--files-from", listfile,
+           "--filter", f"- /{dst_subdir}/**",   # avoid src/dst overlap error
+           "--disable", "DirMove",              # avoid "can't move root directory"
+           "--no-traverse",
+           "--use-json-log", "-v", "--log-file", logpath]
+    if dry_run:
+        cmd.append("--dry-run")
+    if progress:
+        cmd.append("--progress")
+    if extra:
+        cmd += extra
+
+    if progress:
+        proc = subprocess.run(cmd)   # rclone draws its own live progress
+    else:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    errors: List[str] = []
+    try:
+        for line in Path(logpath).read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("level") == "error":
+                obj, msg = entry.get("object", ""), entry.get("msg", "")
+                errors.append(f"{obj}: {msg}" if obj else msg)
+    finally:
+        for p in (listfile, logpath):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    if proc.returncode != 0 and not errors:
+        errors.append("rclone move failed")
+    return proc.returncode == 0, errors
 
 
 def moveto(src: str, dst: str, dry_run: bool = False,
