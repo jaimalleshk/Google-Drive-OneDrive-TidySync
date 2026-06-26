@@ -43,6 +43,7 @@ class AppConfig:
     base_dir: Path                 # directory containing the config file
     remotes: Dict[str, str]
     pairs: Dict[str, PairConfig]
+    dedupe: dict = field(default_factory=dict)   # dedupe defaults (see load_config)
 
     @property
     def state_dir(self) -> Path:
@@ -164,4 +165,12 @@ def load_config(path: Path) -> AppConfig:
         pair.right_remote = remotes[right]
         pairs[name] = pair
 
-    return AppConfig(base_dir=path.parent, remotes=remotes, pairs=pairs)
+    dd = raw.get("dedupe") or {}
+    dedupe_cfg = {
+        "exclude_dirs": [str(x) for x in (dd.get("exclude_dirs") or [])],
+        "only_types": [str(x) for x in (dd.get("only_types") or [])],
+        "skip_types": [str(x) for x in (dd.get("skip_types") or [])],
+        "min_size": int(dd.get("min_size", 1)),
+    }
+
+    return AppConfig(base_dir=path.parent, remotes=remotes, pairs=pairs, dedupe=dedupe_cfg)

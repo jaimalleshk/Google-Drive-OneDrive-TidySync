@@ -8,12 +8,21 @@ quarantine folder for the user to review and delete. Files only; never folders.
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from tidysync import rclone
 from tidysync.state import utcnow_iso
+
+
+def norm_ext(ext: str) -> str:
+    """Normalise a file extension to '.ext' lowercase."""
+    ext = (ext or "").strip().lower()
+    if ext and not ext.startswith("."):
+        ext = "." + ext
+    return ext
 
 QUARANTINE_DIR = "_duplicates"
 
@@ -57,6 +66,7 @@ class DedupeResult:
     groups: List[DupGroup] = field(default_factory=list)
     skipped_no_hash: List[str] = field(default_factory=list)
     skipped_small: List[str] = field(default_factory=list)
+    skipped_type: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
     @property
@@ -70,6 +80,7 @@ class DedupeResult:
             "reclaimable_bytes": reclaim,
             "skipped_no_hash": len(self.skipped_no_hash),
             "skipped_small": len(self.skipped_small),
+            "skipped_type": len(self.skipped_type),
             "errors": len(self.errors),
         }
 
@@ -114,9 +125,18 @@ def _pick_canonical(files: List[dict]) -> Tuple[dict, List[dict]]:
 def find_duplicates(remote: str, folders: Optional[List[str]] = None,
                     filters: Optional[List[str]] = None,
                     quarantine: str = QUARANTINE_DIR,
-                    progress: bool = False, min_size: int = 1) -> DedupeResult:
+                    progress: bool = False, min_size: int = 1,
+                    only_types: Optional[List[str]] = None,
+                    skip_types: Optional[List[str]] = None) -> DedupeResult:
+    """Find content-duplicate files on one remote.
+
+    only_types: if set, ONLY consider files with these extensions (the "only" list).
+    skip_types: additionally skip files with these extensions.
+    """
     rclone.ensure_rclone()
     start = time.time()
+    only = {norm_ext(e) for e in only_types} if only_types else None
+    skip = {norm_ext(e) for e in skip_types} if skip_types else set()
     result = DedupeResult(
         remote=remote,
         scope_desc=("folders: " + ", ".join(folders)) if folders else "whole drive",
@@ -140,6 +160,11 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
                 continue
             result.files_scanned += 1
             it["_full"] = full
+            # File-type filter: "only" list (whitelist) and skip list (blacklist).
+            ext = os.path.splitext(full)[1].lower()
+            if (only is not None and ext not in only) or (ext in skip):
+                result.skipped_type.append(full)
+                continue
             size = it.get("Size")
             # Skip empty / tiny files: all empty files share one hash, which would
             # otherwise group thousands of unrelated files as bogus "duplicates".

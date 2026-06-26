@@ -43,3 +43,20 @@ pairs:
     delta:
       since: "24h"
     dry_run: false
+
+# Optional defaults for the `dedupe` command (all overridable from the command line).
+# Build/dependency folders below are ALWAYS excluded by default (so you don't quarantine
+# files out of virtualenvs/builds); these settings add to or refine that.
+dedupe:
+  # Extra folders to exclude (added to the built-in defaults: .git, node_modules,
+  # .venv, venv, __pycache__, obj, bin, build, dist, *.dist-info, ...). CLI: --exclude
+  exclude_dirs: []          # e.g. ["**/Archive/**", "**/Temp/**"]
+
+  # "Only" list (whitelist): if non-empty, dedupe ONLY these file types. CLI: --only-types
+  only_types: []            # e.g. [".pdf", ".docx", ".xls", ".xlsx", ".jpg", ".png"]
+
+  # Also skip these file types (blacklist). CLI: --skip-types
+  skip_types: []            # e.g. [".tmp", ".log", ".bak"]
+
+  # Ignore files smaller than this many bytes (1 = skip only empty files). CLI: --min-size
+  min_size: 1

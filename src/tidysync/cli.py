@@ -235,7 +235,7 @@ def _print_dedupe(args, result, html_path) -> None:
           f"dup_groups={t['duplicate_groups']} duplicates={t['duplicates']} "
           f"reclaimable_bytes={t['reclaimable_bytes']} "
           f"no_hash={t['skipped_no_hash']} small/empty={t['skipped_small']} "
-          f"errors={t['errors']}")
+          f"wrong_type={t['skipped_type']} errors={t['errors']}")
     if result.errors:
         for e in result.errors[:20]:
             print(f"    x {e}")
@@ -245,6 +245,22 @@ def _print_dedupe(args, result, html_path) -> None:
         url = str(html_path)
     print(f"  report: {html_path}")
     print(f"  open:   {url}")
+
+
+def _csv(s) -> list:
+    """Split a comma-separated string into a clean list (empty if None)."""
+    if not s:
+        return []
+    return [x.strip() for x in str(s).split(",") if x.strip()]
+
+
+def _pretty_excludes(rules: list) -> list:
+    """Turn rclone exclude rules into readable folder names for display."""
+    out = []
+    for r in rules:
+        t = r.lstrip("- ").strip().replace("**/", "").replace("/**", "").replace("**", "")
+        out.append(t or r)
+    return out
 
 
 def cmd_dedupe(args) -> int:
@@ -257,18 +273,38 @@ def cmd_dedupe(args) -> int:
         return 2
     remote = cfg.remotes[args.remote]
     prog = _progress_on(args)
-    # Build/dependency dirs are excluded by default; --no-default-excludes to include,
-    # --exclude PATTERN to add more (rclone filter patterns).
+    dd = cfg.dedupe or {}
+
+    # Excluded folders: built-in defaults (unless disabled) + config + CLI --exclude.
     excludes: list = []
     if not getattr(args, "no_default_excludes", False):
         excludes += dedupe.DEFAULT_EXCLUDES
+    excludes += [f"- {p}" for p in (dd.get("exclude_dirs") or [])]
     excludes += [f"- {p}" for p in (getattr(args, "exclude", None) or [])]
+
+    # File-type filters: "only" list (whitelist) + skip list (blacklist). CLI + config.
+    only_types = _csv(getattr(args, "only_types", None)) or list(dd.get("only_types") or [])
+    skip_types = list(dd.get("skip_types") or []) + _csv(getattr(args, "skip_types", None))
+    min_size = (args.min_size if getattr(args, "min_size", None) is not None
+                else int(dd.get("min_size", 1)))
+
+    # Show the active filters so the user always knows what's included/excluded.
     if excludes:
-        print(f"  (skipping build/dependency dirs by default — {len(excludes)} exclude rules; "
-              "use --no-default-excludes to include them)")
+        names = _pretty_excludes(excludes)
+        shown = ", ".join(names[:30]) + (" ..." if len(names) > 30 else "")
+        print(f"  Excluded folders ({len(excludes)} rules): {shown}"
+              "   [--no-default-excludes to include]")
+    if only_types:
+        print(f"  ONLY these file types: {', '.join(dedupe.norm_ext(e) for e in only_types)}")
+    if skip_types:
+        print(f"  Also skipping file types: {', '.join(dedupe.norm_ext(e) for e in skip_types)}")
+    if min_size > 1:
+        print(f"  Ignoring files smaller than {min_size} bytes")
+
     result = dedupe.find_duplicates(
         remote, folders=args.folder, filters=excludes, quarantine=args.quarantine,
-        progress=prog, min_size=getattr(args, "min_size", 1))
+        progress=prog, min_size=min_size,
+        only_types=only_types or None, skip_types=skip_types or None)
 
     want_apply = bool(args.apply)
     # Mandate report-first: in interactive use (menu), always show the report, then ask
@@ -390,8 +426,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Move duplicates to the quarantine folder (default: report only).")
     sp.add_argument("--quarantine", default=dedupe.QUARANTINE_DIR,
                     help=f"Quarantine folder name (default: {dedupe.QUARANTINE_DIR}).")
-    sp.add_argument("--min-size", type=int, default=1,
+    sp.add_argument("--min-size", type=int, default=None,
                     help="Ignore files smaller than this many bytes (default 1: skips empty files).")
+    sp.add_argument("--only-types", metavar="EXTS",
+                    help="Dedupe ONLY these file extensions, comma-separated "
+                         "(e.g. '.pdf,.docx,.xls,.xlsx'). Blank = all types.")
+    sp.add_argument("--skip-types", metavar="EXTS",
+                    help="Also skip these file extensions, comma-separated (e.g. '.tmp,.log').")
     sp.add_argument("--exclude", action="append", metavar="PATTERN",
                     help="Extra rclone filter pattern to exclude (repeatable), e.g. '**/temp/**'.")
     sp.add_argument("--no-default-excludes", action="store_true",

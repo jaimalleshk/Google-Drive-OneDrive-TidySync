@@ -275,6 +275,10 @@ Design decisions baked in:
 - **Excludes build/dependency dirs by default** — `.git`, `node_modules`, `.venv`, `obj`, `bin`,
   `*.dist-info`, etc. These are byte-identical across projects but must **not** be quarantined (it
   would break virtualenvs/builds). Add more with `--exclude`, or include them with `--no-default-excludes`.
+- **File-type filters** — restrict to an "only" list with `--only-types ".pdf,.docx,.xls,.xlsx"`,
+  or skip types with `--skip-types ".tmp,.log"`. The tool **prints what's included/excluded** before
+  scanning. All of these (excluded folders, only-types, skip-types, min-size) can be defaulted in a
+  `dedupe:` section of `config.yaml` (see [`config.example.yaml`](config.example.yaml)).
 - **Keeps the newest-modified** copy in each group; moves the rest to a quarantine folder.
 - **Report-only by default.** The menu always shows the report first and asks before quarantining;
   on the CLI nothing is moved without `--apply`. Nothing is ever auto-deleted.
@@ -282,7 +286,9 @@ Design decisions baked in:
 ```bash
 tidysync dedupe gdrive                       # report only (build/dependency dirs auto-excluded)
 tidysync dedupe gdrive --folder "Documents"  # limit scan to a folder (repeatable)
-tidysync dedupe gdrive --exclude "**/Archive/**"   # add your own exclude
+tidysync dedupe gdrive --exclude "**/Archive/**"   # add your own folder exclude
+tidysync dedupe gdrive --only-types ".pdf,.docx,.xls,.xlsx"  # dedupe ONLY these file types
+tidysync dedupe gdrive --skip-types ".tmp,.log"    # also skip these file types
 tidysync dedupe gdrive --min-size 102400     # ignore files under 100 KB
 tidysync dedupe gdrive --apply               # move older duplicates into _duplicates/ for review
 tidysync dedupe onedrive --apply             # run per cloud

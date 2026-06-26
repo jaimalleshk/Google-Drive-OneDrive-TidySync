@@ -354,11 +354,19 @@ def menu(config_path: Path) -> int:
                 folder = ask("  Limit to a folder? (blank = whole cloud; "
                              "a folder is faster and avoids API rate limits)", default="")
                 folders = [folder.strip().strip("/")] if folder.strip() else None
+                print("  Default: build/dependency folders are excluded "
+                      "(.git, node_modules, .venv, obj, bin, dist, ...).")
+                only_in = ask("  Dedupe ONLY these file types? comma-separated, "
+                              "e.g. .pdf,.docx,.xlsx (blank = all types)", default="")
+                skip_in = ask("  Also SKIP these file types? comma-separated (blank = none)",
+                              default="")
                 print("  Running a REPORT first (nothing is moved). "
                       "Review it, then you'll be asked whether to quarantine.")
                 cli.cmd_dedupe(_ns(config_path, remote=key, folder=folders,
                                    apply=False, quarantine=dedupe.QUARANTINE_DIR,
-                                   min_size=1, confirm=True))
+                                   min_size=None, confirm=True,
+                                   only_types=(only_in or None), skip_types=(skip_in or None),
+                                   exclude=None, no_default_excludes=False))
             elif choice == "4":
                 print("  Export native Google docs (Docs/Sheets/Slides) to Office files on")
                 print("  Google Drive, recursively, in the same folder. Only creates copies")
