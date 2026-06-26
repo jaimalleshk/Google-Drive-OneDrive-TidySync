@@ -270,12 +270,20 @@ Design decisions baked in:
 - **Per cloud only** — hashes can't be compared across providers (Google Drive uses MD5, OneDrive
   SHA1/quickXorHash), and a copy existing on *both* clouds is expected (that's the sync), not a duplicate.
 - **Files only**, never folders.
+- **Skips empty files** (`--min-size`, default 1 byte) — all empty files share one hash, which would
+  otherwise group thousands of unrelated files as bogus duplicates.
+- **Excludes build/dependency dirs by default** — `.git`, `node_modules`, `.venv`, `obj`, `bin`,
+  `*.dist-info`, etc. These are byte-identical across projects but must **not** be quarantined (it
+  would break virtualenvs/builds). Add more with `--exclude`, or include them with `--no-default-excludes`.
 - **Keeps the newest-modified** copy in each group; moves the rest to a quarantine folder.
-- **Report-only by default.** Nothing is moved without `--apply`, and nothing is ever auto-deleted.
+- **Report-only by default.** The menu always shows the report first and asks before quarantining;
+  on the CLI nothing is moved without `--apply`. Nothing is ever auto-deleted.
 
 ```bash
-tidysync dedupe gdrive                       # report only: list duplicate groups on Google Drive
-tidysync dedupe gdrive --folder "Projects"   # limit scan to a folder (repeatable)
+tidysync dedupe gdrive                       # report only (build/dependency dirs auto-excluded)
+tidysync dedupe gdrive --folder "Documents"  # limit scan to a folder (repeatable)
+tidysync dedupe gdrive --exclude "**/Archive/**"   # add your own exclude
+tidysync dedupe gdrive --min-size 102400     # ignore files under 100 KB
 tidysync dedupe gdrive --apply               # move older duplicates into _duplicates/ for review
 tidysync dedupe onedrive --apply             # run per cloud
 ```

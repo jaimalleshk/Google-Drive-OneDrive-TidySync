@@ -20,6 +20,21 @@ QUARANTINE_DIR = "_duplicates"
 # Prefer strong, widely-available hashes first.
 HASH_PREFERENCE = ["sha256", "sha1", "md5", "quickxor", "crc32", "blake3", "whirlpool"]
 
+# Build / dependency / cache directories skipped by default during dedupe — these are
+# byte-identical across projects but are junk you must NOT quarantine (it would break
+# virtualenvs and builds). rclone filter rules; disable with --no-default-excludes.
+DEFAULT_EXCLUDES = [
+    "- **/.git/**", "- **/.svn/**", "- **/.hg/**",
+    "- **/node_modules/**", "- **/bower_components/**",
+    "- **/.venv/**", "- **/venv/**", "- **/env/**", "- **/__pycache__/**",
+    "- **/.mypy_cache/**", "- **/.pytest_cache/**", "- **/.tox/**",
+    "- **/*.egg-info/**", "- **/*.dist-info/**", "- **/site-packages/**",
+    "- **/obj/**", "- **/bin/**", "- **/build/**", "- **/dist/**", "- **/out/**",
+    "- **/target/**", "- **/.gradle/**", "- **/Pods/**", "- **/Carthage/**",
+    "- **/.next/**", "- **/.nuxt/**", "- **/.cache/**",
+    "- **/.idea/**", "- **/.vs/**", "- **/.vscode/**",
+]
+
 
 @dataclass
 class DupGroup:

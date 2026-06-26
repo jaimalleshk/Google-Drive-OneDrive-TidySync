@@ -257,9 +257,18 @@ def cmd_dedupe(args) -> int:
         return 2
     remote = cfg.remotes[args.remote]
     prog = _progress_on(args)
+    # Build/dependency dirs are excluded by default; --no-default-excludes to include,
+    # --exclude PATTERN to add more (rclone filter patterns).
+    excludes: list = []
+    if not getattr(args, "no_default_excludes", False):
+        excludes += dedupe.DEFAULT_EXCLUDES
+    excludes += [f"- {p}" for p in (getattr(args, "exclude", None) or [])]
+    if excludes:
+        print(f"  (skipping build/dependency dirs by default — {len(excludes)} exclude rules; "
+              "use --no-default-excludes to include them)")
     result = dedupe.find_duplicates(
-        remote, folders=args.folder, quarantine=args.quarantine, progress=prog,
-        min_size=getattr(args, "min_size", 1))
+        remote, folders=args.folder, filters=excludes, quarantine=args.quarantine,
+        progress=prog, min_size=getattr(args, "min_size", 1))
 
     want_apply = bool(args.apply)
     # Mandate report-first: in interactive use (menu), always show the report, then ask
@@ -383,6 +392,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help=f"Quarantine folder name (default: {dedupe.QUARANTINE_DIR}).")
     sp.add_argument("--min-size", type=int, default=1,
                     help="Ignore files smaller than this many bytes (default 1: skips empty files).")
+    sp.add_argument("--exclude", action="append", metavar="PATTERN",
+                    help="Extra rclone filter pattern to exclude (repeatable), e.g. '**/temp/**'.")
+    sp.add_argument("--no-default-excludes", action="store_true",
+                    help="Include build/dependency dirs (.git, node_modules, .venv, obj, ...) "
+                         "that are skipped by default.")
     sp.set_defaults(func=cmd_dedupe)
 
     sp = sub.add_parser(
