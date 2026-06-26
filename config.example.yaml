@@ -4,6 +4,11 @@ remotes:
   gdrive: "gdrive:"          # names you gave in `rclone config`
   onedrive: "onedrive:"
 
+# Global rclone throttle for the `dedupe` and `convert` commands, so they stay under
+# Google Drive / OneDrive API rate limits. Omit this key to use safe built-in defaults
+# (--tpslimit 10, --fast-list, low parallelism); set to [] to disable throttling.
+# rclone_args: ["--tpslimit", "10", "--fast-list", "--checkers", "4", "--transfers", "2"]
+
 pairs:
   # Two-way delta sync of two listed folders
   - name: projects

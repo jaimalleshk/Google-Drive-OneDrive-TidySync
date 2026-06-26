@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import yaml
 
@@ -44,6 +44,8 @@ class AppConfig:
     remotes: Dict[str, str]
     pairs: Dict[str, PairConfig]
     dedupe: dict = field(default_factory=dict)   # dedupe defaults (see load_config)
+    # Global rclone throttle for dedupe/convert. None = use safe defaults; [] = no throttle.
+    rclone_args: Optional[list] = None
 
     @property
     def state_dir(self) -> Path:
@@ -173,4 +175,10 @@ def load_config(path: Path) -> AppConfig:
         "min_size": int(dd.get("min_size", 1)),
     }
 
-    return AppConfig(base_dir=path.parent, remotes=remotes, pairs=pairs, dedupe=dedupe_cfg)
+    # Global throttle for dedupe/convert: absent -> None (cli applies safe defaults);
+    # present (even []) -> use as given.
+    global_rclone_args = ([str(a) for a in (raw.get("rclone_args") or [])]
+                          if "rclone_args" in raw else None)
+
+    return AppConfig(base_dir=path.parent, remotes=remotes, pairs=pairs,
+                     dedupe=dedupe_cfg, rclone_args=global_rclone_args)

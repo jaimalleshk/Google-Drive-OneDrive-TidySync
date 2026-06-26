@@ -127,7 +127,8 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
                     quarantine: str = QUARANTINE_DIR,
                     progress: bool = False, min_size: int = 1,
                     only_types: Optional[List[str]] = None,
-                    skip_types: Optional[List[str]] = None) -> DedupeResult:
+                    skip_types: Optional[List[str]] = None,
+                    extra: Optional[List[str]] = None) -> DedupeResult:
     """Find content-duplicate files on one remote.
 
     only_types: if set, ONLY consider files with these extensions (the "only" list).
@@ -148,7 +149,8 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
         try:
             items = rclone.lsjson(
                 scan_path, filters=filters, with_hash=True,
-                spinner_label=(f"hashing {scan_path}" if progress else None))
+                spinner_label=(f"hashing {scan_path}" if progress else None),
+                extra=extra)
         except rclone.RcloneError as exc:
             result.errors.append(str(exc))
             continue
@@ -190,7 +192,7 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
 
 
 def apply_quarantine(result: DedupeResult, dry_run: bool = False,
-                     progress: bool = False) -> None:
+                     progress: bool = False, extra: Optional[List[str]] = None) -> None:
     """Move every quarantined file to <remote>:<quarantine>/<original path>."""
     from tidysync.progress import Counter
     result.apply = not dry_run
@@ -202,7 +204,7 @@ def apply_quarantine(result: DedupeResult, dry_run: bool = False,
             counter.step(full)
             src = _join(result.remote, full)
             dst = _join(result.remote, f"{result.quarantine}/{full}")
-            ok, err = rclone.moveto(src, dst, dry_run=dry_run)
+            ok, err = rclone.moveto(src, dst, dry_run=dry_run, extra=extra)
             f["_moved"] = ok and not dry_run
             if not ok:
                 result.errors.append(f"{full}: {err}")

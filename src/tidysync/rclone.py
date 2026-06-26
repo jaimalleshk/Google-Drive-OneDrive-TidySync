@@ -15,6 +15,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+# Conservative rclone flags that keep us well under Google Drive / OneDrive API
+# rate limits (used by dedupe & convert, and as a default for sync). ~600 API
+# transactions/min, fewer list calls via --fast-list, low parallelism.
+DEFAULT_RCLONE_ARGS = [
+    "--tpslimit", "10",
+    "--tpslimit-burst", "10",
+    "--drive-pacer-min-sleep", "200ms",
+    "--checkers", "4",
+    "--transfers", "2",
+    "--fast-list",
+]
+
 
 def _run_capture(cmd: List[str], spinner_label: Optional[str] = None) -> Tuple[int, str, str]:
     """Run a command, capturing stdout/stderr as UTF-8.
@@ -157,12 +169,15 @@ def lsjson(path: str, max_age: Optional[str] = None,
         raise RcloneError(f"Could not parse lsjson output for {path}: {exc}")
 
 
-def moveto(src: str, dst: str, dry_run: bool = False) -> Tuple[bool, str]:
+def moveto(src: str, dst: str, dry_run: bool = False,
+           extra: Optional[List[str]] = None) -> Tuple[bool, str]:
     """Move a single file from src to dst (within one remote). Returns (ok, error)."""
     exe = ensure_rclone()
     cmd = [exe, "moveto", src, dst]
     if dry_run:
         cmd.append("--dry-run")
+    if extra:
+        cmd += extra
     out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         return False, (out.stderr.strip() or "rclone moveto failed")

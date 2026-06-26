@@ -79,7 +79,8 @@ def out_name(full_path: str, ext: str) -> str:
 def run_convert(remote: str, folders: Optional[List[str]] = None,
                 filters: Optional[List[str]] = None,
                 dry_run: bool = False, progress: bool = False,
-                refresh: bool = False) -> ConvertResult:
+                refresh: bool = False,
+                extra: Optional[List[str]] = None) -> ConvertResult:
     """Export native Google docs to Office files on Drive, recursively, in place.
 
     By default only creates a copy where one does NOT already exist. With
@@ -99,7 +100,8 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
         try:
             listing = rclone.lsjson(
                 scan_path, filters=filters,
-                spinner_label=(f"scanning {scan_path} for Google docs" if progress else None))
+                spinner_label=(f"scanning {scan_path} for Google docs" if progress else None),
+                extra=extra)
             for it in listing:
                 it["_full"] = (prefix + "/" + it["Path"]) if prefix else it["Path"]
                 items.append(it)
@@ -144,11 +146,12 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
             counter.step(it["_full"])
             src = _join(remote, it["_full"])
             local = os.path.join(tmp, out.replace("/", "__"))
-            ok, err = rclone.copyto(src, local, extra=["--drive-export-formats", ext])
+            ok, err = rclone.copyto(src, local,
+                                    extra=["--drive-export-formats", ext] + (extra or []))
             if not ok:
                 result.errors.append(f"{it['_full']}: export failed: {err}")
                 continue
-            ok, err = rclone.copyto(local, _join(remote, out))
+            ok, err = rclone.copyto(local, _join(remote, out), extra=extra)
             if not ok:
                 result.errors.append(f"{out}: upload failed: {err}")
                 continue

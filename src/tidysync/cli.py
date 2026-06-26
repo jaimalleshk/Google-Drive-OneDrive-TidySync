@@ -287,6 +287,8 @@ def cmd_dedupe(args) -> int:
     skip_types = list(dd.get("skip_types") or []) + _csv(getattr(args, "skip_types", None))
     min_size = (args.min_size if getattr(args, "min_size", None) is not None
                 else int(dd.get("min_size", 1)))
+    # API throttle (keeps us under Google/OneDrive rate limits). None -> safe defaults.
+    throttle = cfg.rclone_args if cfg.rclone_args is not None else rclone.DEFAULT_RCLONE_ARGS
 
     # Show the active filters so the user always knows what's included/excluded.
     if excludes:
@@ -300,11 +302,13 @@ def cmd_dedupe(args) -> int:
         print(f"  Also skipping file types: {', '.join(dedupe.norm_ext(e) for e in skip_types)}")
     if min_size > 1:
         print(f"  Ignoring files smaller than {min_size} bytes")
+    if throttle:
+        print("  API throttle: on (staying under Google/OneDrive rate limits)")
 
     result = dedupe.find_duplicates(
         remote, folders=args.folder, filters=excludes, quarantine=args.quarantine,
         progress=prog, min_size=min_size,
-        only_types=only_types or None, skip_types=skip_types or None)
+        only_types=only_types or None, skip_types=skip_types or None, extra=throttle)
 
     want_apply = bool(args.apply)
     # Mandate report-first: in interactive use (menu), always show the report, then ask
@@ -327,7 +331,7 @@ def cmd_dedupe(args) -> int:
             t = result.totals
             print(f"  found {t['duplicates']} duplicate file(s) in {t['duplicate_groups']} "
                   f"group(s); moving to '{args.quarantine}/' ...", file=sys.stderr)
-        dedupe.apply_quarantine(result, dry_run=False, progress=prog)
+        dedupe.apply_quarantine(result, dry_run=False, progress=prog, extra=throttle)
 
     html_path, _, _ = write_dedupe_report(result, cfg.reports_dir)
     _print_dedupe(args, result, html_path)
@@ -350,9 +354,10 @@ def cmd_convert(args) -> int:
         print(f"error: '{args.remote}' is type '{rtype or 'unknown'}'. "
               "Google-doc conversion applies only to Google Drive remotes.", file=sys.stderr)
         return 2
+    throttle = cfg.rclone_args if cfg.rclone_args is not None else rclone.DEFAULT_RCLONE_ARGS
     res = gdocs.run_convert(remote, folders=args.folder, dry_run=not args.apply,
                             progress=_progress_on(args),
-                            refresh=getattr(args, "refresh", False))
+                            refresh=getattr(args, "refresh", False), extra=throttle)
     t = res.totals
     mode = "CONVERTED" if res.apply else "REPORT-ONLY"
     print(f"\n{mode} {args.remote}: converted={t['converted']} "

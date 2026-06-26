@@ -41,7 +41,7 @@ def fake_lsjson(path, max_age=None, filters=None, with_hash=False, **kwargs):
     return FILES.get(path, [])
 
 
-def fake_moveto(src, dst, dry_run=False):
+def fake_moveto(src, dst, dry_run=False, **kwargs):
     MOVES.append((src, dst, dry_run))
     return True, ""
 
