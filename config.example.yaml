@@ -58,7 +58,7 @@ dedupe:
   exclude_dirs: []          # e.g. ["**/Archive/**", "**/Temp/**"]
 
   # "Only" list (whitelist): if non-empty, dedupe ONLY these file types. CLI: --only-types
-  only_types: []            # e.g. [".pdf", ".docx", ".xls", ".xlsx", ".jpg", ".png"]
+  only_types: []            # e.g. [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".txt", ".zip", ".7z"]
 
   # Also skip these file types (blacklist). CLI: --skip-types
   skip_types: []            # e.g. [".tmp", ".log", ".bak"]

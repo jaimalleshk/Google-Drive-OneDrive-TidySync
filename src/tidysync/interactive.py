@@ -358,8 +358,9 @@ def menu(config_path: Path) -> int:
                              "faster & avoids API rate limits)", default="")
                 folders = [folder.strip().strip("/")] if folder.strip() else None
                 # 2. Only-types (whitelist)
-                only_in = ask("  2) ONLY these file types? comma-separated, "
-                              "e.g. .pdf,.docx,.xls,.xlsx,.jpg (blank = all types)", default="")
+                only_in = ask("  2) ONLY these file types? comma-separated, e.g. "
+                              ".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.7z "
+                              "(blank = all types)", default="")
                 # 3. Skip-types (blacklist)
                 skip_in = ask("  3) Also SKIP these file types? e.g. .tmp,.log (blank = none)",
                               default="")
