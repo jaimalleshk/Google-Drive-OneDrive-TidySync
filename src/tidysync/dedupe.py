@@ -42,6 +42,9 @@ DEFAULT_EXCLUDES = [
     "- **/target/**", "- **/.gradle/**", "- **/Pods/**", "- **/Carthage/**",
     "- **/.next/**", "- **/.nuxt/**", "- **/.cache/**",
     "- **/.idea/**", "- **/.vs/**", "- **/.vscode/**",
+    # OneDrive Personal Vault is a locked area the API cannot enumerate
+    # (errors with 'ObjectHandle is Invalid'); always skip it.
+    "- Personal Vault/**", "- **/Personal Vault/**",
 ]
 
 
