@@ -315,7 +315,7 @@ def cmd_dedupe(args) -> int:
     # before quarantining. CLI default stays report-only; --apply is the explicit override.
     if (not want_apply and getattr(args, "confirm", False)
             and result.groups and interactive.is_tty()):
-        html_path, _, _ = write_dedupe_report(result, cfg.reports_dir)
+        html_path, _, json_path = write_dedupe_report(result, cfg.reports_dir)
         _print_dedupe(args, result, html_path)
         _open_report(html_path)
         t = result.totals
@@ -324,6 +324,8 @@ def cmd_dedupe(args) -> int:
             f"'{args.quarantine}/' (for review; not deleted) now?", default=False)
         if not want_apply:
             print("  Kept as report-only — nothing was moved.")
+            print("  Apply later WITHOUT re-scanning with:")
+            print(f"      tidysync apply-report \"{json_path}\"")
             return 1 if result.errors else 0
 
     if want_apply and result.groups:
@@ -338,6 +340,51 @@ def cmd_dedupe(args) -> int:
     if result.groups and not result.apply:
         print("  (report-only by default — re-run with --apply, or use the menu, to quarantine)")
     return 1 if result.errors else 0
+
+
+def cmd_apply_report(args) -> int:
+    """Quarantine duplicates listed in a saved dedupe JSON report (no re-scan)."""
+    import json
+    rclone.ensure_rclone()
+    p = Path(args.report)
+    if not p.exists():
+        print(f"error: report not found: {p}", file=sys.stderr)
+        return 2
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"error: could not read report: {exc}", file=sys.stderr)
+        return 2
+    remote = data.get("remote")
+    quarantine = data.get("quarantine", "_duplicates")
+    paths = [f.get("path") for g in data.get("groups", [])
+             for f in g.get("quarantined", []) if f.get("path")]
+    if not remote or not paths:
+        print("Nothing to apply — no duplicates listed in this report.")
+        return 0
+
+    try:
+        cfg = _load(args)
+        throttle = (cfg.rclone_args if cfg.rclone_args is not None
+                    else rclone.DEFAULT_RCLONE_ARGS)
+    except Exception:
+        throttle = rclone.DEFAULT_RCLONE_ARGS
+
+    print(f"  report: {p.name}  ->  {len(paths)} duplicate(s) on {remote}")
+    if interactive.enabled(args):
+        if not interactive.ask_yes_no(
+                f"Move these {len(paths)} file(s) to '{quarantine}/' (for review; "
+                "not deleted) now?", default=False):
+            print("Aborted — nothing moved.")
+            return 1
+    print(f"  moving {len(paths)} file(s) to {quarantine}/ (single server-side move)...")
+    ok, errs = rclone.move_batch(remote, quarantine, paths, extra=throttle,
+                                 progress=_progress_on(args))
+    for e in errs[:20]:
+        print(f"    x {e}")
+    print(f"  {'DONE' if ok else 'FAILED'}: {len(paths) - len(errs)}/{len(paths)} moved, "
+          f"errors={len(errs)}")
+    return 0 if ok else 1
 
 
 def cmd_convert(args) -> int:
@@ -444,6 +491,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Include build/dependency dirs (.git, node_modules, .venv, obj, ...) "
                          "that are skipped by default.")
     sp.set_defaults(func=cmd_dedupe)
+
+    sp = sub.add_parser(
+        "apply-report",
+        help="Quarantine duplicates from a saved dedupe JSON report (no re-scan).")
+    sp.add_argument("report", help="Path to a reports/dedupe_*.json file.")
+    sp.set_defaults(func=cmd_apply_report)
 
     sp = sub.add_parser(
         "convert",

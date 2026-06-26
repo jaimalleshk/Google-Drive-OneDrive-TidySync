@@ -351,44 +351,63 @@ def menu(config_path: Path) -> int:
                 key = _pick_remote_key(config_path)
                 if not key:
                     continue
-                print("\n  ===== Find duplicates: set up the scan "
-                      "(Enter = accept default) =====")
-                # 1. Scope
-                folder = ask("  1) Folder to scan? (blank = whole cloud; a folder is "
-                             "faster & avoids API rate limits)", default="")
-                folders = [folder.strip().strip("/")] if folder.strip() else None
-                # 2. Only-types (whitelist)
-                only_in = ask("  2) ONLY these file types? comma-separated, e.g. "
-                              ".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.7z "
-                              "(blank = all types)", default="")
-                # 3. Skip-types (blacklist)
-                skip_in = ask("  3) Also SKIP these file types? e.g. .tmp,.log (blank = none)",
-                              default="")
-                # 4. Min size
-                minsz_in = ask("  4) Ignore files smaller than how many bytes? "
-                               "(blank = 1, i.e. skip only empty files)", default="")
-                try:
-                    min_size = int(minsz_in) if minsz_in.strip() else None
-                except ValueError:
-                    print("     (not a number — using default)")
-                    min_size = None
-                # 5. Excluded folders (default blacklist) — shown + customizable
-                names = cli._pretty_excludes(dedupe.DEFAULT_EXCLUDES)
-                print("  5) Excluded folders (build/dependency dirs, skipped by default):")
-                print("       " + ", ".join(names[:14]) + ", ...")
-                include_build = ask_yes_no("     Include these build/dependency folders "
-                                           "in the scan too?", default=False)
-                extra_ex = ask("     Add extra folders to exclude? rclone patterns, "
-                               "comma-separated, e.g. **/Archive/** (blank = none)", default="")
-                extra_excludes = [p.strip() for p in extra_ex.split(",") if p.strip()] or None
+                action = ask_choice(
+                    "  Dedupe action",
+                    ["Scan now (creates a fresh report)",
+                     "Apply a previous report (no re-scan)"],
+                    default="Scan now (creates a fresh report)")
+                if action.startswith("Apply"):
+                    import glob as _glob
+                    cfg = load_config(config_path)
+                    remote = cfg.remotes.get(key, key)
+                    safe = remote.replace(":", "").replace("/", "_") or "remote"
+                    matches = sorted(
+                        _glob.glob(str(cfg.reports_dir / f"dedupe_{safe}_*.json")), reverse=True)
+                    if not matches:
+                        print(f"  No previous dedupe report found for {key} — scan first.")
+                    else:
+                        print(f"  Using latest report: {matches[0]}")
+                        cli.cmd_apply_report(_ns(config_path, report=matches[0]))
+                else:
+                    print("\n  ===== Find duplicates: set up the scan "
+                          "(Enter = accept default) =====")
+                    # 1. Scope
+                    folder = ask("  1) Folder to scan? (blank = whole cloud; a folder is "
+                                 "faster & avoids API rate limits)", default="")
+                    folders = [folder.strip().strip("/")] if folder.strip() else None
+                    # 2. Only-types (whitelist)
+                    only_in = ask("  2) ONLY these file types? comma-separated, e.g. "
+                                  ".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.7z "
+                                  "(blank = all types)", default="")
+                    # 3. Skip-types (blacklist)
+                    skip_in = ask("  3) Also SKIP these file types? e.g. .tmp,.log (blank = none)",
+                                  default="")
+                    # 4. Min size
+                    minsz_in = ask("  4) Ignore files smaller than how many bytes? "
+                                   "(blank = 1, i.e. skip only empty files)", default="")
+                    try:
+                        min_size = int(minsz_in) if minsz_in.strip() else None
+                    except ValueError:
+                        print("     (not a number — using default)")
+                        min_size = None
+                    # 5. Excluded folders (default blacklist) — shown + customizable
+                    names = cli._pretty_excludes(dedupe.DEFAULT_EXCLUDES)
+                    print("  5) Excluded folders (build/dependency dirs, skipped by default):")
+                    print("       " + ", ".join(names[:14]) + ", ...")
+                    include_build = ask_yes_no("     Include these build/dependency folders "
+                                               "in the scan too?", default=False)
+                    extra_ex = ask("     Add extra folders to exclude? rclone patterns, "
+                                   "comma-separated, e.g. **/Archive/** (blank = none)",
+                                   default="")
+                    extra_excludes = [p.strip() for p in extra_ex.split(",") if p.strip()] or None
 
-                print("\n  Running a REPORT first (nothing is moved). "
-                      "Review it, then you'll be asked whether to quarantine.")
-                cli.cmd_dedupe(_ns(config_path, remote=key, folder=folders,
-                                   apply=False, quarantine=dedupe.QUARANTINE_DIR,
-                                   min_size=min_size, confirm=True,
-                                   only_types=(only_in or None), skip_types=(skip_in or None),
-                                   exclude=extra_excludes, no_default_excludes=include_build))
+                    print("\n  Running a REPORT first (nothing is moved). "
+                          "Review it, then you'll be asked whether to quarantine.")
+                    cli.cmd_dedupe(_ns(config_path, remote=key, folder=folders,
+                                       apply=False, quarantine=dedupe.QUARANTINE_DIR,
+                                       min_size=min_size, confirm=True,
+                                       only_types=(only_in or None), skip_types=(skip_in or None),
+                                       exclude=extra_excludes, no_default_excludes=include_build))
             elif choice == "4":
                 print("  Export native Google docs (Docs/Sheets/Slides) to Office files on")
                 print("  Google Drive, recursively, in the same folder. Only creates copies")
