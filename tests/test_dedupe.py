@@ -18,8 +18,12 @@ FILES = {
          "IsDir": False, "Hashes": {"md5": "H1"}},            # newer -> kept
         {"Path": "b.txt", "Size": 200, "ModTime": "2026-06-11T00:00:00Z",
          "IsDir": False, "Hashes": {"md5": "H2"}},            # unique
-        {"Path": "native.gdoc", "Size": 0, "ModTime": "2026-06-11T00:00:00Z",
-         "IsDir": False, "Hashes": {}},                       # no hash -> skipped
+        {"Path": "native.gdoc", "Size": 50, "ModTime": "2026-06-11T00:00:00Z",
+         "IsDir": False, "Hashes": {}},                       # no hash -> skipped_no_hash
+        {"Path": "empty1.txt", "Size": 0, "ModTime": "2026-06-11T00:00:00Z",
+         "IsDir": False, "Hashes": {"md5": "EMPTY"}},         # empty -> skipped_small
+        {"Path": "empty2.txt", "Size": 0, "ModTime": "2026-06-11T00:00:00Z",
+         "IsDir": False, "Hashes": {"md5": "EMPTY"}},         # empty -> skipped_small (NOT a dup)
         {"Path": "_duplicates/old.txt", "Size": 100, "ModTime": "2026-06-01T00:00:00Z",
          "IsDir": False, "Hashes": {"md5": "H1"}},            # already quarantined -> ignored
     ],
@@ -54,10 +58,11 @@ def main():
         print(f"  group {g.hash_type}:{g.hash_value} keep={g.kept['_full']} "
               f"quarantine={[f['_full'] for f in g.quarantined]}")
 
-    assert t["files_scanned"] == 4, f"expected 4 scanned (quarantine ignored), got {t['files_scanned']}"
+    assert t["files_scanned"] == 6, f"expected 6 scanned (quarantine ignored), got {t['files_scanned']}"
     assert t["duplicate_groups"] == 1, t
     assert t["duplicates"] == 1, t
-    assert t["skipped_no_hash"] == 1, t
+    assert t["skipped_no_hash"] == 1, t                       # native.gdoc
+    assert t["skipped_small"] == 2, t                         # two empty files, NOT grouped as dups
     g = result.groups[0]
     assert g.kept["_full"] == "copies/a_copy.txt", "newest copy must be kept"
     assert [f["_full"] for f in g.quarantined] == ["a.txt"], "older copy must be quarantined"

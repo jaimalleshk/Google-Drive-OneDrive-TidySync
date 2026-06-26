@@ -354,7 +354,8 @@ def menu(config_path: Path) -> int:
                 apply = ask_yes_no("Move duplicates to quarantine now? "
                                    "(No = report only)", default=False)
                 cli.cmd_dedupe(_ns(config_path, remote=key, folder=None,
-                                   apply=apply, quarantine=dedupe.QUARANTINE_DIR))
+                                   apply=apply, quarantine=dedupe.QUARANTINE_DIR,
+                                   min_size=1))
             elif choice == "4":
                 print("  Export native Google docs (Docs/Sheets/Slides) to Office files on")
                 print("  Google Drive, recursively, in the same folder. Only creates copies")

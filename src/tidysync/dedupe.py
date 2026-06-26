@@ -41,6 +41,7 @@ class DedupeResult:
     files_scanned: int = 0
     groups: List[DupGroup] = field(default_factory=list)
     skipped_no_hash: List[str] = field(default_factory=list)
+    skipped_small: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
     @property
@@ -53,6 +54,7 @@ class DedupeResult:
             "duplicates": quarantined,
             "reclaimable_bytes": reclaim,
             "skipped_no_hash": len(self.skipped_no_hash),
+            "skipped_small": len(self.skipped_small),
             "errors": len(self.errors),
         }
 
@@ -97,7 +99,7 @@ def _pick_canonical(files: List[dict]) -> Tuple[dict, List[dict]]:
 def find_duplicates(remote: str, folders: Optional[List[str]] = None,
                     filters: Optional[List[str]] = None,
                     quarantine: str = QUARANTINE_DIR,
-                    progress: bool = False) -> DedupeResult:
+                    progress: bool = False, min_size: int = 1) -> DedupeResult:
     rclone.ensure_rclone()
     start = time.time()
     result = DedupeResult(
@@ -123,13 +125,20 @@ def find_duplicates(remote: str, folders: Optional[List[str]] = None,
                 continue
             result.files_scanned += 1
             it["_full"] = full
+            size = it.get("Size")
+            # Skip empty / tiny files: all empty files share one hash, which would
+            # otherwise group thousands of unrelated files as bogus "duplicates".
+            if size is None or size < min_size:
+                result.skipped_small.append(full)
+                continue
             picked = _best_hash(it.get("Hashes") or {})
             if not picked:
                 result.skipped_no_hash.append(full)
                 continue
-            by_hash.setdefault(picked, []).append(it)
+            # Group by hash AND size (same content => same hash & size).
+            by_hash.setdefault((picked[0], picked[1], size), []).append(it)
 
-    for (htype, hval), files in by_hash.items():
+    for (htype, hval, _size), files in by_hash.items():
         if len(files) < 2:
             continue
         keep, rest = _pick_canonical(files)
@@ -146,7 +155,7 @@ def apply_quarantine(result: DedupeResult, dry_run: bool = False,
     from tidysync.progress import Counter
     result.apply = not dry_run
     total = sum(len(g.quarantined) for g in result.groups)
-    counter = Counter(total, "quarantining", on=progress)
+    counter = Counter(total, "moved to quarantine", on=progress)
     for group in result.groups:
         for f in group.quarantined:
             full = f["_full"]

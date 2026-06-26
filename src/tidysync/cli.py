@@ -239,8 +239,14 @@ def cmd_dedupe(args) -> int:
     remote = cfg.remotes[args.remote]
     prog = _progress_on(args)
     result = dedupe.find_duplicates(
-        remote, folders=args.folder, quarantine=args.quarantine, progress=prog)
+        remote, folders=args.folder, quarantine=args.quarantine, progress=prog,
+        min_size=getattr(args, "min_size", 1))
     if args.apply and result.groups:
+        if prog:
+            tt = result.totals
+            print(f"  found {tt['duplicates']} duplicate file(s) in "
+                  f"{tt['duplicate_groups']} group(s); moving to '{args.quarantine}/' ...",
+                  file=sys.stderr)
         dedupe.apply_quarantine(result, dry_run=False, progress=prog)
 
     html_path, _, _ = write_dedupe_report(result, cfg.reports_dir)
@@ -249,7 +255,8 @@ def cmd_dedupe(args) -> int:
     print(f"\n{mode} {args.remote}: scanned={t['files_scanned']} "
           f"dup_groups={t['duplicate_groups']} duplicates={t['duplicates']} "
           f"reclaimable_bytes={t['reclaimable_bytes']} "
-          f"no_hash={t['skipped_no_hash']} errors={t['errors']}")
+          f"no_hash={t['skipped_no_hash']} small/empty={t['skipped_small']} "
+          f"errors={t['errors']}")
     if result.groups and not args.apply:
         print(f"  (re-run with --apply to move {t['duplicates']} duplicate(s) "
               f"to '{args.quarantine}/' for review)")
@@ -350,6 +357,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Move duplicates to the quarantine folder (default: report only).")
     sp.add_argument("--quarantine", default=dedupe.QUARANTINE_DIR,
                     help=f"Quarantine folder name (default: {dedupe.QUARANTINE_DIR}).")
+    sp.add_argument("--min-size", type=int, default=1,
+                    help="Ignore files smaller than this many bytes (default 1: skips empty files).")
     sp.set_defaults(func=cmd_dedupe)
 
     sp = sub.add_parser(
