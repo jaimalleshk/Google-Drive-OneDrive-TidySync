@@ -1,7 +1,8 @@
 # Google Drive ⇄ OneDrive TidySync
 
-> Private, free, two-way **delta sync** + **content-hash duplicate detection** between Google
-> Drive and OneDrive — driven by a single menu-based command (`tidysync`), built on rclone.
+> Private, free, two-way **delta sync** + **content-hash duplicate detection** for **any two
+> cloud storages** — built on [rclone](https://rclone.org/)'s 70+ backends, driven by a single
+> menu-based command (`tidysync`). **Tested on Google Drive ⇄ OneDrive.**
 
 [![CI](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/actions/workflows/ci.yml/badge.svg)](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jaimalleshk/Google-Drive-OneDrive-TidySync?include_prereleases)](https://github.com/jaimalleshk/Google-Drive-OneDrive-TidySync/releases)
@@ -28,13 +29,25 @@ move cloud ↔ cloud directly via your own OAuth; nothing transits a third-party
 ## What it does
 
 A small, opinionated CLI that syncs **deltas** (newly created + recently modified files
-and folders) between Google Drive and OneDrive — one-way in either direction, or two-way,
-on demand or on a schedule — and writes a report of exactly what was synced.
+and folders) between two clouds — one-way in either direction, or two-way, on demand or on a
+schedule — and writes a report of exactly what was synced.
 
-It talks directly to Google Drive and Microsoft Graph using **your own** OAuth credentials.
-Files move **cloud ↔ cloud directly** — they do not pass through any third-party server.
-(Hosted alternatives like MultCloud / cloudHQ do the same job but are metered/paid and route
-your data through their infrastructure.)
+It talks directly to each provider's API using **your own** OAuth credentials. Files move
+**cloud ↔ cloud directly** — they do not pass through any third-party server. (Hosted
+alternatives like MultCloud / cloudHQ do the same job but are metered/paid and route your data
+through their infrastructure.)
+
+### 🌐 Works with any rclone remote
+
+Because the engine is rclone, TidySync works between **any two of rclone's 70+ backends** —
+Dropbox, Box, S3, pCloud, SFTP, and more — not just Google Drive and OneDrive. You add remotes
+with `rclone config` and reference them in `config.yaml`. Two honest caveats:
+
+- **Only Google Drive ⇄ OneDrive is tested so far.** Other pairs *should* work (the sync logic
+  is backend-agnostic) but are unvalidated — try them with `--dry-run` first and report back.
+- **Two features are conditional:** the **Google-docs → Office conversion** applies only when a
+  source is Google Drive; **content-hash dedupe** needs the backend to expose a content hash
+  (most do — md5/sha1/etc.).
 
 > ### 🔬 Status — validation in progress
 > The logic is covered by **offline tests** (sync, dedupe, and the config wizard, with rclone
