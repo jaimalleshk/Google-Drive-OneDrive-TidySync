@@ -228,6 +228,25 @@ def cmd_unschedule(args) -> int:
     return 0
 
 
+def _print_dedupe(args, result, html_path) -> None:
+    t = result.totals
+    mode = "APPLIED" if result.apply else "REPORT-ONLY"
+    print(f"\n{mode} {args.remote}: scanned={t['files_scanned']} "
+          f"dup_groups={t['duplicate_groups']} duplicates={t['duplicates']} "
+          f"reclaimable_bytes={t['reclaimable_bytes']} "
+          f"no_hash={t['skipped_no_hash']} small/empty={t['skipped_small']} "
+          f"errors={t['errors']}")
+    if result.errors:
+        for e in result.errors[:20]:
+            print(f"    x {e}")
+    try:
+        url = Path(html_path).resolve().as_uri()
+    except Exception:
+        url = str(html_path)
+    print(f"  report: {html_path}")
+    print(f"  open:   {url}")
+
+
 def cmd_dedupe(args) -> int:
     cfg = _load(args)
     rclone.ensure_rclone()
@@ -241,29 +260,34 @@ def cmd_dedupe(args) -> int:
     result = dedupe.find_duplicates(
         remote, folders=args.folder, quarantine=args.quarantine, progress=prog,
         min_size=getattr(args, "min_size", 1))
-    if args.apply and result.groups:
+
+    want_apply = bool(args.apply)
+    # Mandate report-first: in interactive use (menu), always show the report, then ask
+    # before quarantining. CLI default stays report-only; --apply is the explicit override.
+    if (not want_apply and getattr(args, "confirm", False)
+            and result.groups and interactive.is_tty()):
+        html_path, _, _ = write_dedupe_report(result, cfg.reports_dir)
+        _print_dedupe(args, result, html_path)
+        _open_report(html_path)
+        t = result.totals
+        want_apply = interactive.ask_yes_no(
+            f"\nReview the report above. Move {t['duplicates']} duplicate(s) to "
+            f"'{args.quarantine}/' (for review; not deleted) now?", default=False)
+        if not want_apply:
+            print("  Kept as report-only — nothing was moved.")
+            return 1 if result.errors else 0
+
+    if want_apply and result.groups:
         if prog:
-            tt = result.totals
-            print(f"  found {tt['duplicates']} duplicate file(s) in "
-                  f"{tt['duplicate_groups']} group(s); moving to '{args.quarantine}/' ...",
-                  file=sys.stderr)
+            t = result.totals
+            print(f"  found {t['duplicates']} duplicate file(s) in {t['duplicate_groups']} "
+                  f"group(s); moving to '{args.quarantine}/' ...", file=sys.stderr)
         dedupe.apply_quarantine(result, dry_run=False, progress=prog)
 
     html_path, _, _ = write_dedupe_report(result, cfg.reports_dir)
-    t = result.totals
-    mode = "APPLIED" if result.apply else "REPORT-ONLY"
-    print(f"\n{mode} {args.remote}: scanned={t['files_scanned']} "
-          f"dup_groups={t['duplicate_groups']} duplicates={t['duplicates']} "
-          f"reclaimable_bytes={t['reclaimable_bytes']} "
-          f"no_hash={t['skipped_no_hash']} small/empty={t['skipped_small']} "
-          f"errors={t['errors']}")
-    if result.groups and not args.apply:
-        print(f"  (re-run with --apply to move {t['duplicates']} duplicate(s) "
-              f"to '{args.quarantine}/' for review)")
-    if result.errors:
-        for e in result.errors[:20]:
-            print(f"    x {e}")
-    print(f"  report: {html_path}")
+    _print_dedupe(args, result, html_path)
+    if result.groups and not result.apply:
+        print("  (report-only by default — re-run with --apply, or use the menu, to quarantine)")
     return 1 if result.errors else 0
 
 

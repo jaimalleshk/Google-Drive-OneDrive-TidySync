@@ -351,11 +351,14 @@ def menu(config_path: Path) -> int:
                 key = _pick_remote_key(config_path)
                 if not key:
                     continue
-                apply = ask_yes_no("Move duplicates to quarantine now? "
-                                   "(No = report only)", default=False)
-                cli.cmd_dedupe(_ns(config_path, remote=key, folder=None,
-                                   apply=apply, quarantine=dedupe.QUARANTINE_DIR,
-                                   min_size=1))
+                folder = ask("  Limit to a folder? (blank = whole cloud; "
+                             "a folder is faster and avoids API rate limits)", default="")
+                folders = [folder.strip().strip("/")] if folder.strip() else None
+                print("  Running a REPORT first (nothing is moved). "
+                      "Review it, then you'll be asked whether to quarantine.")
+                cli.cmd_dedupe(_ns(config_path, remote=key, folder=folders,
+                                   apply=False, quarantine=dedupe.QUARANTINE_DIR,
+                                   min_size=1, confirm=True))
             elif choice == "4":
                 print("  Export native Google docs (Docs/Sheets/Slides) to Office files on")
                 print("  Google Drive, recursively, in the same folder. Only creates copies")
