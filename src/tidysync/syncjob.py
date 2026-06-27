@@ -195,16 +195,18 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
                     "modtime": c.get("ModTime", ""),
                 })
 
-    # Conflicts (two-way only): a file present in BOTH sides' windows AND actually
-    # DIFFERENT. Identical files (same size + same modtime to the second) are skipped
-    # by rclone and are NOT conflicts, even if both fall in the time window.
+    # Conflicts (two-way only): a file present in BOTH sides' windows whose SIZE
+    # differs -- a strong signal the content genuinely diverged. Same-size files
+    # (even with different modtimes) are treated as quiet newest-wins updates, not
+    # conflicts, since cross-cloud we can't compare content and a size match almost
+    # always means the same bytes (just clock drift). The latest is always taken.
     if pair.mode == "two-way":
         for folder, sides in seen.items():
             left, right = sides["L"], sides["R"]
             for path in sorted(set(left) & set(right)):
-                (ls, lm), (rs, rm) = left[path], right[path]
-                if ls == rs and (lm or "")[:19] == (rm or "")[:19]:
-                    continue   # identical on both sides -> not a conflict
+                (ls, _lm), (rs, _rm) = left[path], right[path]
+                if ls == rs:
+                    continue   # same size -> quiet newest-wins, not a conflict
                 full = (folder + "/" + path) if folder else path
                 result.conflicts.append(full)
 

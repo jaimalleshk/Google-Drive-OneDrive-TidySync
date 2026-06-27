@@ -34,12 +34,18 @@ pairs:
 FAKE_LSJSON = {
     "gdrive:Active": [
         {"Path": "new_on_gdrive.txt", "Size": 100, "ModTime": "2026-06-20T10:00:00Z", "IsDir": False},
-        {"Path": "edited_both.txt", "Size": 200, "ModTime": "2026-06-21T09:00:00Z", "IsDir": False},
+        # different SIZE on each side -> real conflict (content diverged)
+        {"Path": "bigconflict.txt", "Size": 200, "ModTime": "2026-06-21T09:00:00Z", "IsDir": False},
+        # same size, different modtime -> quiet newest-wins update, NOT a conflict
+        {"Path": "samesize.txt", "Size": 80, "ModTime": "2026-06-22T08:00:00Z", "IsDir": False},
+        # same size + same modtime -> identical, skipped
         {"Path": "identical.txt", "Size": 50, "ModTime": "2026-06-19T08:00:00Z", "IsDir": False},
     ],
     "onedrive:Active": [
         {"Path": "new_on_onedrive.txt", "Size": 300, "ModTime": "2026-06-20T11:00:00Z", "IsDir": False},
-        {"Path": "edited_both.txt", "Size": 200, "ModTime": "2026-06-21T12:00:00Z", "IsDir": False},
+        {"Path": "bigconflict.txt", "Size": 250, "ModTime": "2026-06-21T12:00:00Z", "IsDir": False},
+        {"Path": "samesize.txt", "Size": 80, "ModTime": "2026-06-22T10:00:00Z", "IsDir": False},
+        {"Path": "identical.txt", "Size": 50, "ModTime": "2026-06-19T08:00:00Z", "IsDir": False},
     ],
 }
 
@@ -53,19 +59,20 @@ def fake_lsjson(path, max_age, filters, **kwargs):
 
 
 def fake_copy(src, dst, max_age, filters, dry_run=False, extra=None, **kwargs):
+    """Simulate rclone copy --update: new files created; src copied only when newer
+    than dest and not identical (same size + same modtime)."""
     res = rclone.CopyResult(src=src, dst=dst)
-    # Simulate rclone: new files get copied; edited_both copied only where source is newer
-    # (--update). identical.txt is skipped (not transferred).
-    for f in FAKE_LSJSON.get(src, []):
-        p = f["Path"]
-        if p == "identical.txt":
-            continue  # skipped by rclone hash check
-        if p == "edited_both.txt":
-            # onedrive copy is newer (12:00) -> only onedrive->gdrive transfers it
-            if src.startswith("onedrive:"):
-                res.updated.append(p)
-            continue
-        res.created.append(p)
+    dst_files = {f["Path"]: f for f in FAKE_LSJSON.get(dst, [])}
+    for sf in FAKE_LSJSON.get(src, []):
+        p = sf["Path"]
+        df = dst_files.get(p)
+        if df is None:
+            res.created.append(p)
+        elif sf["ModTime"] > df["ModTime"]:   # src newer (--update)
+            if sf["Size"] != df["Size"] or sf["ModTime"][:19] != df["ModTime"][:19]:
+                res.updated.append(p)          # differs -> would copy
+            # identical -> skipped
+        # src older/equal -> skipped
     return res
 
 
@@ -91,9 +98,13 @@ def main():
             print(f"  {it['direction']:<4} {it['action']:<18} {it['path']}")
 
         # Assertions
-        assert "Active/edited_both.txt" in result.conflicts, "should detect both-sides edit"
+        assert "Active/bigconflict.txt" in result.conflicts, "size-diff file is a conflict"
+        assert "Active/samesize.txt" not in result.conflicts, \
+            "same-size/diff-modtime is quiet newest-wins, NOT a conflict"
+        assert t["conflicts"] == 1, f"only the size-diff file is a conflict, got {t['conflicts']}"
         assert t["created"] == 2, f"expected 2 created (one per side), got {t['created']}"
-        assert t["updated"] == 1, f"expected 1 updated (newer onedrive copy), got {t['updated']}"
+        assert t["updated"] == 2, \
+            f"expected 2 updated (bigconflict + samesize, newest-wins), got {t['updated']}"
         assert t["skipped_identical"] >= 1, "identical file should be skipped"
         assert t["errors"] == 0, "no errors expected"
 
