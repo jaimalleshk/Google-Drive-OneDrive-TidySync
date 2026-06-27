@@ -224,31 +224,19 @@ def list_dirs(remote: str, filters: Optional[List[str]] = None,
     return [line.rstrip("/").strip() for line in out.stdout.splitlines() if line.strip()]
 
 
-def move_batch(remote: str, dst_subdir: str, paths: List[str],
-               extra: Optional[List[str]] = None, dry_run: bool = False,
-               progress: bool = False) -> Tuple[bool, List[str]]:
-    """Move many files (paths relative to remote root) into remote:<dst_subdir>/ in
-    ONE server-side rclone process. Far faster than per-file moveto. Returns
-    (ok, error_lines)."""
+def _move_filesfrom(src: str, dst: str, rels: List[str], extra: Optional[List[str]],
+                    dry_run: bool, progress: bool) -> Tuple[int, List[str]]:
+    """One `rclone move src dst --files-from <rels>` (server-side). src/dst must NOT
+    overlap. Returns (moved_count, error_lines)."""
     exe = ensure_rclone()
-    if not paths:
-        return True, []
-    dst = (remote + dst_subdir if remote.endswith(":")
-           else remote.rstrip("/") + "/" + dst_subdir)
-
     with tempfile.NamedTemporaryFile("w", suffix=".lst", delete=False,
                                      encoding="utf-8") as lf:
-        lf.write("\n".join(paths))
+        lf.write("\n".join(rels))
         listfile = lf.name
     with tempfile.NamedTemporaryFile("r", suffix=".log", delete=False,
                                      encoding="utf-8") as tf:
         logpath = tf.name
-
-    cmd = [exe, "move", remote, dst,
-           "--files-from", listfile,
-           "--filter", f"- /{dst_subdir}/**",   # avoid src/dst overlap error
-           "--disable", "DirMove",              # avoid "can't move root directory"
-           "--no-traverse",
+    cmd = [exe, "move", src, dst, "--files-from", listfile, "--no-traverse",
            "--use-json-log", "-v", "--log-file", logpath]
     if dry_run:
         cmd.append("--dry-run")
@@ -256,14 +244,13 @@ def move_batch(remote: str, dst_subdir: str, paths: List[str],
         cmd.append("--progress")
     if extra:
         cmd += extra
-
     if progress:
-        proc = subprocess.run(cmd)   # rclone draws its own live progress
+        proc = subprocess.run(cmd)
     else:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               encoding="utf-8", errors="replace")
-
     errors: List[str] = []
+    moved = 0
     try:
         for line in Path(logpath).read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
@@ -273,9 +260,12 @@ def move_batch(remote: str, dst_subdir: str, paths: List[str],
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if entry.get("level") == "error":
-                obj, msg = entry.get("object", ""), entry.get("msg", "")
+            level, msg = entry.get("level", ""), entry.get("msg", "")
+            if level == "error":
+                obj = entry.get("object", "")
                 errors.append(f"{obj}: {msg}" if obj else msg)
+            elif "Moved" in msg or "Renamed" in msg:
+                moved += 1
     finally:
         for p in (listfile, logpath):
             try:
@@ -283,8 +273,75 @@ def move_batch(remote: str, dst_subdir: str, paths: List[str],
             except OSError:
                 pass
     if proc.returncode != 0 and not errors:
-        errors.append("rclone move failed")
-    return proc.returncode == 0, errors
+        errors.append(f"rclone move failed ({src} -> {dst})")
+    return moved, errors
+
+
+def move_batch(remote: str, dst_subdir: str, paths: List[str],
+               extra: Optional[List[str]] = None, dry_run: bool = False,
+               progress: bool = False) -> Tuple[int, List[str]]:
+    """Move many files into remote:<dst_subdir>/ preserving paths, server-side.
+
+    Groups files by TOP-LEVEL folder and moves each group with its own
+    src=remote:<top> -> dst=remote:<dst_subdir>/<top>, which never overlaps, so
+    --files-from works (it can't be combined with a --filter). Far faster than
+    per-file moves. Returns (moved_count, error_lines).
+    """
+    from collections import OrderedDict
+    if not paths:
+        return 0, []
+
+    groups: "OrderedDict[str, List[str]]" = OrderedDict()
+    root_files: List[str] = []
+    for p in paths:
+        if "/" in p:
+            top, rest = p.split("/", 1)
+            groups.setdefault(top, []).append(rest)
+        else:
+            root_files.append(p)
+
+    total = len(paths)
+    moved = 0
+    errors: List[str] = []
+    n_groups = len(groups) + (1 if root_files else 0)
+    i = 0
+
+    for top, rels in groups.items():
+        i += 1
+        if progress:
+            sys.stderr.write(f"  [{i}/{n_groups}] moving {len(rels)} file(s) from "
+                             f"{top} -> {dst_subdir}/{top} ...\n")
+            sys.stderr.flush()
+        src = _join_path(remote, top)
+        dst = _join_path(remote, f"{dst_subdir}/{top}")
+        m, errs = _move_filesfrom(src, dst, rels, extra, dry_run, progress)
+        moved += m
+        errors += errs
+
+    # Root-level loose files: src=remote root overlaps dst, so move them individually.
+    if root_files:
+        i += 1
+        if progress:
+            sys.stderr.write(f"  [{i}/{n_groups}] moving {len(root_files)} root file(s) ...\n")
+            sys.stderr.flush()
+        for p in root_files:
+            ok, err = moveto(_join_path(remote, p),
+                             _join_path(remote, f"{dst_subdir}/{p}"),
+                             dry_run=dry_run, extra=extra)
+            if ok:
+                moved += 1
+            else:
+                errors.append(f"{p}: {err}")
+
+    if dry_run:
+        moved = total - len(errors)
+    return moved, errors
+
+
+def _join_path(remote: str, rel: str) -> str:
+    if not rel:
+        return remote
+    return remote + rel if remote.endswith(":") else remote.rstrip("/") + "/" + rel
 
 
 def moveto(src: str, dst: str, dry_run: bool = False,

@@ -225,10 +225,15 @@ def apply_quarantine(result: DedupeResult, dry_run: bool = False,
         sys.stderr.write(f"  moving {len(paths)} file(s) to {result.quarantine}/ "
                          "(single server-side move)...\n")
         sys.stderr.flush()
-    ok, errs = rclone.move_batch(result.remote, result.quarantine, paths,
-                                 extra=extra, dry_run=dry_run, progress=progress)
+    moved_count, errs = rclone.move_batch(result.remote, result.quarantine, paths,
+                                          extra=extra, dry_run=dry_run, progress=progress)
     result.errors.extend(errs)
-    moved = ok and not dry_run
+    ok = not dry_run and not errs
     for g in result.groups:
         for f in g.quarantined:
-            f["_moved"] = moved
+            f["_moved"] = ok
+    if progress:
+        import sys
+        sys.stderr.write(f"  quarantine: {moved_count}/{len(paths)} moved"
+                         + (f", {len(errs)} error(s)" if errs else "") + "\n")
+        sys.stderr.flush()

@@ -47,7 +47,7 @@ def fake_lsjson(path, max_age=None, filters=None, with_hash=False, **kwargs):
 
 def fake_move_batch(remote, dst_subdir, paths, extra=None, dry_run=False, progress=False):
     MOVES.append((remote, dst_subdir, list(paths)))
-    return True, []
+    return len(paths), []
 
 
 def main():

@@ -377,14 +377,14 @@ def cmd_apply_report(args) -> int:
                 "not deleted) now?", default=False):
             print("Aborted — nothing moved.")
             return 1
-    print(f"  moving {len(paths)} file(s) to {quarantine}/ (single server-side move)...")
-    ok, errs = rclone.move_batch(remote, quarantine, paths, extra=throttle,
-                                 progress=_progress_on(args))
+    print(f"  moving {len(paths)} file(s) to {quarantine}/ (server-side, per folder)...")
+    moved, errs = rclone.move_batch(remote, quarantine, paths, extra=throttle,
+                                    progress=_progress_on(args))
     for e in errs[:20]:
         print(f"    x {e}")
-    print(f"  {'DONE' if ok else 'FAILED'}: {len(paths) - len(errs)}/{len(paths)} moved, "
+    print(f"  {'DONE' if not errs else 'PARTIAL'}: {moved}/{len(paths)} moved, "
           f"errors={len(errs)}")
-    return 0 if ok else 1
+    return 0 if not errs else 1
 
 
 def cmd_convert(args) -> int:
