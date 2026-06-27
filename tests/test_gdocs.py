@@ -10,19 +10,26 @@ from tidysync import gdocs, rclone
 
 # One Drive folder: a Doc with no twin (convert), a Doc whose .docx is newer (skip),
 # a Sheet (convert -> xlsx), an unsupported Form (skip), and a plain file (ignore).
+# Native Google docs report Size == -1. With rclone's default export, they appear with
+# an Office extension + Office MimeType; without it, with the google-apps MimeType.
+DOC = "application/vnd.google-apps.document"
+SHEET = "application/vnd.google-apps.spreadsheet"
+OFFICE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 LISTING = {
     "gdrive:": [
-        {"Path": "Plan", "ModTime": "2026-06-10T00:00:00Z",
-         "MimeType": "application/vnd.google-apps.document"},
-        {"Path": "Budget", "ModTime": "2026-06-10T00:00:00Z",
-         "MimeType": "application/vnd.google-apps.spreadsheet"},
-        {"Path": "Notes", "ModTime": "2026-06-10T00:00:00Z",
-         "MimeType": "application/vnd.google-apps.document"},
-        {"Path": "Notes.docx", "ModTime": "2026-06-12T00:00:00Z",  # newer twin -> skip
-         "MimeType": "application/octet-stream"},
-        {"Path": "Survey", "ModTime": "2026-06-10T00:00:00Z",
+        {"Path": "Plan", "Size": -1, "ModTime": "2026-06-10T00:00:00Z",
+         "MimeType": DOC},                                         # -> Plan.docx
+        {"Path": "Budget", "Size": -1, "ModTime": "2026-06-10T00:00:00Z",
+         "MimeType": SHEET},                                       # -> Budget.xlsx
+        {"Path": "Report.docx", "Size": -1, "ModTime": "2026-06-10T00:00:00Z",
+         "MimeType": OFFICE_DOCX},          # native doc shown via export_formats -> Report.docx
+        {"Path": "Notes", "Size": -1, "ModTime": "2026-06-10T00:00:00Z",
+         "MimeType": DOC},                                         # twin exists -> skip
+        {"Path": "Notes.docx", "Size": 1234, "ModTime": "2026-06-12T00:00:00Z",
+         "MimeType": OFFICE_DOCX},                                 # real .docx (Size != -1)
+        {"Path": "Survey", "Size": -1, "ModTime": "2026-06-10T00:00:00Z",
          "MimeType": "application/vnd.google-apps.form"},          # unsupported
-        {"Path": "photo.jpg", "ModTime": "2026-06-10T00:00:00Z",
+        {"Path": "photo.jpg", "Size": 500, "ModTime": "2026-06-10T00:00:00Z",
          "MimeType": "image/jpeg"},                                # plain file
     ],
 }
@@ -53,7 +60,7 @@ def main():
     t = res.totals
     print("dry-run totals:", t)
     conv_paths = sorted(c["path"] for c in res.converted)
-    assert conv_paths == ["Budget", "Plan"], conv_paths        # Notes skipped (up-to-date)
+    assert conv_paths == ["Budget", "Plan", "Report.docx"], conv_paths  # Notes skipped (twin exists)
     assert t["uptodate"] == 1, t                               # Notes
     assert t["unsupported"] == 1, t                            # Survey form
     assert CALLS == [], "dry run must not call copyto"
@@ -61,12 +68,12 @@ def main():
     # --- real run: exports + uploads each convertible doc ---
     res = gdocs.run_convert("gdrive:", dry_run=False)
     outs = sorted(c["out"] for c in res.converted)
-    assert outs == ["Budget.xlsx", "Plan.docx"], outs
-    # 2 docs x (export + upload) = 4 copyto calls
-    assert len(CALLS) == 4, CALLS
+    assert outs == ["Budget.xlsx", "Plan.docx", "Report.docx"], outs
+    # 3 docs x (export + upload) = 6 copyto calls
+    assert len(CALLS) == 6, CALLS
     # export calls carry the right --drive-export-formats
     export_fmts = sorted(c[2][1] for c in CALLS if c[2] and c[2][0] == "--drive-export-formats")
-    assert export_fmts == ["docx", "xlsx"], export_fmts
+    assert export_fmts == ["docx", "docx", "xlsx"], export_fmts
     print("real-run outs:", outs)
     print("copyto calls:", len(CALLS))
 

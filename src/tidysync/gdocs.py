@@ -25,12 +25,20 @@ from tidysync import rclone
 from tidysync.progress import Counter
 from tidysync.state import utcnow_iso
 
-# Google native MIME type -> Office export extension.
+# Google native MIME type -> Office export extension (when export_formats is off).
 EXPORT_MAP = {
     "application/vnd.google-apps.document": "docx",
     "application/vnd.google-apps.spreadsheet": "xlsx",
     "application/vnd.google-apps.presentation": "pptx",
     "application/vnd.google-apps.drawing": "svg",
+}
+# rclone exports Google docs BY DEFAULT, so native docs usually appear with an Office
+# extension + these Office MimeTypes (and Size == -1).
+OFFICE_MIME = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "image/svg+xml": "svg",
 }
 GOOGLE_PREFIX = "application/vnd.google-apps."
 
@@ -108,25 +116,30 @@ def run_convert(remote: str, folders: Optional[List[str]] = None,
         except rclone.RcloneError as exc:
             result.errors.append(str(exc))
 
-    # 2. Map of existing (non-native) files -> ModTime, for idempotency checks.
+    # 2. Real binary files (Size != -1), keyed by path -> ModTime, for idempotency.
     existing = {it["_full"]: it.get("ModTime", "")
-                for it in items if not it.get("MimeType", "").startswith(GOOGLE_PREFIX)}
+                for it in items if it.get("Size", 0) != -1}
 
-    # 3. Decide what needs converting.
+    # 3. Decide what to convert. A Google native doc reports Size == -1 (size unknown
+    #    until exported). Because rclone exports docs by default, it usually shows the
+    #    Office MimeType + extension rather than the google-apps MimeType — so detect
+    #    by Size == -1, then map either MimeType family to the target extension.
     todo: List[Tuple[dict, str, str]] = []
     for it in items:
+        if it.get("Size", 0) != -1:
+            continue                       # a real file, not a Google native doc
         mime = it.get("MimeType", "")
-        if not mime.startswith(GOOGLE_PREFIX):
-            continue
-        ext = EXPORT_MAP.get(mime)
+        ext = EXPORT_MAP.get(mime) or OFFICE_MIME.get(mime)
         if not ext:
-            result.skipped_unsupported.append(it["_full"])
+            result.skipped_unsupported.append(it["_full"])   # Forms, Sites, etc.
             continue
-        out = out_name(it["_full"], ext)
+        full = it["_full"]
+        # If rclone already gave it the extension (X.docx), keep it; else append it.
+        out = full if full.lower().endswith("." + ext) else out_name(full, ext)
         if out in existing:
-            # Office copy already exists. Skip unless refresh + the doc is newer.
+            # A real Office copy already exists. Skip unless refresh + doc is newer.
             if not refresh or existing[out] >= it.get("ModTime", ""):
-                result.skipped_uptodate.append(it["_full"])
+                result.skipped_uptodate.append(full)
                 continue
         todo.append((it, out, ext))
 
