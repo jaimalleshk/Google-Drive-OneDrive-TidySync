@@ -248,10 +248,15 @@ def _print_dedupe(args, result, html_path) -> None:
 
 
 def _csv(s) -> list:
-    """Split a comma-separated string into a clean list (empty if None)."""
+    """Split a user list on commas, whitespace, or semicolons (empty if None).
+
+    Tolerant so '.pdf,.docx', '.pdf .docx', and '.pdf; .docx' all work — extensions
+    never contain those characters.
+    """
+    import re
     if not s:
         return []
-    return [x.strip() for x in str(s).split(",") if x.strip()]
+    return [x for x in re.split(r"[,\s;]+", str(s).strip()) if x]
 
 
 def _pretty_excludes(rules: list) -> list:
