@@ -165,9 +165,9 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
             _trail(f"  {len(candidates)} changed/new file(s); {verb} {src} -> {dst} ...",
                    progress)
 
-            seen.setdefault(folder, {"L": set(), "R": set()})
+            seen.setdefault(folder, {"L": {}, "R": {}})
             for c in candidates:
-                seen[folder][side].add(c["Path"])
+                seen[folder][side][c["Path"]] = (c.get("Size"), c.get("ModTime", ""))
 
             copy_res = rclone.copy(src, dst, window, eff_filters,
                                    dry_run=dry_run, progress=progress,
@@ -195,11 +195,16 @@ def run_pair(cfg: AppConfig, pair: PairConfig, store: StateStore,
                     "modtime": c.get("ModTime", ""),
                 })
 
-    # Conflicts: file changed on BOTH sides within the window (two-way only).
+    # Conflicts (two-way only): a file present in BOTH sides' windows AND actually
+    # DIFFERENT. Identical files (same size + same modtime to the second) are skipped
+    # by rclone and are NOT conflicts, even if both fall in the time window.
     if pair.mode == "two-way":
         for folder, sides in seen.items():
-            both = sides["L"] & sides["R"]
-            for path in sorted(both):
+            left, right = sides["L"], sides["R"]
+            for path in sorted(set(left) & set(right)):
+                (ls, lm), (rs, rm) = left[path], right[path]
+                if ls == rs and (lm or "")[:19] == (rm or "")[:19]:
+                    continue   # identical on both sides -> not a conflict
                 full = (folder + "/" + path) if folder else path
                 result.conflicts.append(full)
 
